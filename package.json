@@ -1,0 +1,18 @@
+{
+  "name": "registro-de-campo",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.25.0",
+  "scripts": {
+    "dev:api": "pnpm --filter @registro/api dev",
+    "dev:web": "pnpm --filter @registro/web dev",
+    "dev:mobile": "pnpm --filter @registro/mobile start",
+    "typecheck": "pnpm -r typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3"
+  }
+}

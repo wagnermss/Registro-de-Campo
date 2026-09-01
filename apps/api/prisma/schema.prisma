@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  FIELD_USER
+}
+
+enum SyncOperationStatus {
+  PENDING
+  APPLIED
+  CONFLICT
+  REJECTED
+}
+
+model User {
+  id               String        @id @default(uuid()) @db.Uuid
+  name             String
+  email            String        @unique
+  passwordHash     String
+  refreshTokenHash String?
+  role             UserRole      @default(FIELD_USER)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  records          FieldRecord[]
+  documents        Document[]    @relation("DocumentUploader")
+
+  @@map("users")
+}
+
+model FieldRecord {
+  id          String            @id @db.Uuid
+  userId      String            @db.Uuid
+  title       String
+  description String?
+  latitude    Decimal           @db.Decimal(10, 7)
+  longitude   Decimal           @db.Decimal(10, 7)
+  accuracy    Decimal?          @db.Decimal(10, 2)
+  capturedAt  DateTime
+  photoKey    String?
+  version     Int               @default(1)
+  updatedAt   DateTime          @updatedAt
+  deletedAt   DateTime?
+  user        User              @relation(fields: [userId], references: [id])
+  operations  SyncOperation[]
+
+  @@index([userId])
+  @@index([updatedAt])
+  @@map("field_records")
+}
+
+model Document {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  mimeType     String
+  storageKey   String   @unique
+  version      Int      @default(1)
+  isActive     Boolean  @default(true)
+  uploadedById String   @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  uploadedBy   User     @relation("DocumentUploader", fields: [uploadedById], references: [id])
+
+  @@index([updatedAt])
+  @@map("documents")
+}
+
+model SyncOperation {
+  id          String              @id @db.Uuid
+  recordId    String              @db.Uuid
+  userId      String              @db.Uuid
+  type        String
+  baseVersion Int
+  payload     Json?
+  status      SyncOperationStatus @default(PENDING)
+  createdAt   DateTime            @default(now())
+  processedAt DateTime?
+  record      FieldRecord         @relation(fields: [recordId], references: [id])
+
+  @@index([recordId])
+  @@index([userId])
+  @@map("sync_operations")
+}

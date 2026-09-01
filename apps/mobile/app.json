@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Registro de Campo",
+    "slug": "registro-de-campo",
+    "scheme": "registrocampo",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.registrodecampo.app"
+    },
+    "android": {
+      "package": "com.registrodecampo.app"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-sqlite"
+    ]
+  }
+}

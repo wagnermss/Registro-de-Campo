@@ -1,0 +1,57 @@
+# Dependências e cache do pnpm
+node_modules/
+.pnpm-store/
+
+# Variáveis de ambiente e credenciais locais
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Saídas de build e cobertura
+dist/
+build/
+coverage/
+.next/
+out/
+*.tsbuildinfo
+
+# Expo e React Native
+.expo/
+.expo-shared/
+apps/mobile/ios/
+apps/mobile/android/
+web-build/
+
+# Bancos e arquivos gerados localmente
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+uploads/
+
+# Logs e arquivos temporários
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.cache/
+.tmp/
+tmp/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editores e IDEs
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+
+# Docker local opcional
+docker-compose.override.yml
