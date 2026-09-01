@@ -1,21 +1,77 @@
 # Registro de Campo
 
-Aplicação offline-first para coleta de registros com foto e geolocalização, sincronizados com uma API e visualizados em um painel web.
+Plataforma offline-first para coleta de registros em campo com fotografia e geolocalização. O sistema é composto por um aplicativo mobile, uma API compartilhada e um painel web para consulta dos registros e gestão de documentos.
 
-## Pré-requisitos
+O aplicativo mobile mantém os dados no próprio dispositivo, permitindo consultar e criar registros sem conexão. Quando a conectividade é restabelecida, os itens pendentes poderão ser sincronizados com o servidor sem interromper o trabalho em campo.
 
-- Node.js 22+
-- pnpm 11+
-- Docker Desktop em execução
-- Xcode para simulador iOS
+## Funcionalidades
 
-## Início rápido
+### Mobile
 
-1. Copie as variáveis locais: `cp .env.example .env`.
-2. Abra o Docker Desktop.
-3. Inicie os serviços: `docker compose up -d`.
-4. Instale dependências: `pnpm install`.
+- Autenticação com sessão armazenada no Keychain/Keystore do dispositivo.
+- Persistência local com SQLite.
+- Criação e consulta de registros offline.
+- Captura de fotografia e geolocalização.
+- Identificação de registros pendentes de sincronização.
+- Abertura offline com restauração da sessão local.
+- Sincronização automática e documentos offline em desenvolvimento.
 
-PostgreSQL ficará disponível em `localhost:5433` e o console MinIO em `http://localhost:9001`.
+### Web
 
-Consulte [a arquitetura](docs/architecture.md) para a estratégia de sincronização e conflitos.
+- Autenticação integrada à mesma API do mobile.
+- Controle de acesso baseado no perfil do usuário.
+- Estrutura inicial do painel administrativo.
+- Dashboard de registros, mapa e gestão de documentos em desenvolvimento.
+
+### Backend
+
+- API REST desenvolvida com NestJS.
+- Autenticação por access token e refresh token JWT.
+- Senhas armazenadas por meio de hash com bcryptjs.
+- Validação de dados recebidos pela API.
+- Persistência central em PostgreSQL com Prisma ORM.
+- Modelos para usuários, registros de campo, documentos e operações de sincronização.
+- Armazenamento de fotos e documentos com MinIO/S3 em desenvolvimento.
+
+## Tecnologias
+
+| Camada           | Tecnologias                                    |
+| ---------------- | ---------------------------------------------- |
+| Mobile           | React Native, Expo, Expo Router e TypeScript   |
+| Dados locais     | Expo SQLite e Expo File System                 |
+| Recursos nativos | Expo Camera, Expo Location e Expo Secure Store |
+| Web              | Next.js, React e TypeScript                    |
+| API              | Node.js, NestJS, Passport e JWT                |
+| Persistência     | PostgreSQL e Prisma ORM                        |
+| Arquivos         | MinIO, com API compatível com Amazon S3        |
+| Infraestrutura   | Docker e Docker Compose                        |
+| Monorepo         | pnpm Workspaces                                |
+| Qualidade        | TypeScript e Prettier                          |
+
+## Arquitetura
+
+O projeto utiliza um monorepo para manter clientes, API e contratos compartilhados no mesmo repositório:
+
+```text
+apps/
+  api/       API NestJS e schema Prisma
+  mobile/    aplicativo React Native com Expo
+  web/       painel web Next.js
+packages/
+  shared-types/  contratos TypeScript compartilhados
+docs/        decisões e documentação de arquitetura
+```
+
+O PostgreSQL é a fonte compartilhada de dados do servidor. No mobile, o SQLite funciona como fonte local, e cada novo registro recebe um identificador próprio e um estado de sincronização. Fotos são armazenadas no sistema de arquivos do dispositivo e referenciadas pelo banco local.
+
+## Sincronização e conflitos
+
+A estratégia planejada combina operações idempotentes e versionamento otimista. Cada operação possui um identificador único, e cada registro mantém uma versão. O servidor compara a versão base enviada pelo cliente com a versão atual antes de aceitar uma alteração.
+
+Caso as versões sejam diferentes, a operação é identificada como conflito e a versão local é preservada para resolução, evitando perda silenciosa de dados. A sincronização será realizada em duas fases: envio das operações locais pendentes e download incremental das alterações do servidor.
+
+Mais detalhes estão disponíveis em [docs/architecture.md](docs/architecture.md).
+
+## Estado do projeto
+
+O projeto está em desenvolvimento. A infraestrutura, autenticação, persistência central e criação local de registros offline já estão estruturadas. As próximas entregas incluem sincronização automática, upload de fotos, dashboard web, documentos offline e interface de resolução de conflitos.
