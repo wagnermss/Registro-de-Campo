@@ -1,6 +1,6 @@
 # Arquitetura
 
-O sistema adota uma abordagem offline-first. O app mobile persiste registros e operações pendentes em SQLite antes de chamar a API. PostgreSQL é a fonte compartilhada de dados e o MinIO armazena fotos e documentos em desenvolvimento.
+O sistema adota uma abordagem offline-first. O app mobile persiste registros, operações pendentes e o catálogo de documentos em SQLite antes de chamar a API. PostgreSQL é a fonte compartilhada de dados e o MinIO armazena fotos e documentos.
 
 ## Componentes
 
@@ -22,6 +22,17 @@ Atualizações usam versionamento otimista: o servidor aceita uma operação ape
 - `GET /api/sync/pull` devolve alterações posteriores ao cursor do cliente.
 - O mobile mantém `field_records`, `sync_queue` e `sync_state` no SQLite.
 - O retorno da conectividade dispara upload, push e pull sem bloquear o uso offline.
+
+## Documentos offline
+
+- `GET /api/documents` fornece o catálogo ativo para usuários autenticados.
+- `POST /api/documents` publica arquivos e é restrito a administradores.
+- `PUT /api/documents/:id/file` substitui o arquivo e incrementa sua versão.
+- `PATCH /api/documents/:id/status` controla a publicação sem apagar o cadastro.
+- `GET /api/documents/:id/download` gera um link temporário do MinIO.
+- O mobile mantém os metadados em SQLite e os arquivos no diretório permanente do aplicativo.
+- Versão e checksum SHA-256 indicam quando um documento baixado precisa ser atualizado.
+- Um arquivo antigo permanece acessível offline até a nova versão ser baixada com sucesso.
 
 ## Prisma
 

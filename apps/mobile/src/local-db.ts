@@ -25,6 +25,20 @@ export type PendingOperation = LocalRecord & {
   attempts: number;
 };
 
+export type LocalDocument = {
+  id: string;
+  name: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  checksumSha256: string;
+  version: number;
+  updatedAt: string;
+  localUri: string | null;
+  downloadedChecksum: string | null;
+  downloadedVersion: number | null;
+};
+
 export async function initializeLocalDatabase() {
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
@@ -88,6 +102,12 @@ export async function initializeLocalDatabase() {
   await db.execAsync(`CREATE TABLE IF NOT EXISTS sync_state (
     key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL
   );`);
+  await db.execAsync(`CREATE TABLE IF NOT EXISTS documents (
+    id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, original_name TEXT NOT NULL,
+    mime_type TEXT NOT NULL, size_bytes INTEGER NOT NULL, checksum_sha256 TEXT NOT NULL,
+    version INTEGER NOT NULL, updated_at TEXT NOT NULL, local_uri TEXT,
+    downloaded_checksum TEXT, downloaded_version INTEGER
+  );`);
   const pending = await db.getAllAsync<{
     id: string;
     version: number;
@@ -106,6 +126,72 @@ export async function initializeLocalDatabase() {
   }
 }
 
+export async function listLocalDocuments() {
+  return db.getAllAsync<LocalDocument>(`SELECT id, name, original_name as originalName,
+    mime_type as mimeType, size_bytes as sizeBytes, checksum_sha256 as checksumSha256,
+    version, updated_at as updatedAt, local_uri as localUri,
+    downloaded_checksum as downloadedChecksum, downloaded_version as downloadedVersion
+    FROM documents ORDER BY updated_at DESC`);
+}
+
+export async function applyDocumentCatalog(
+  documents: Omit<
+    LocalDocument,
+    "localUri" | "downloadedChecksum" | "downloadedVersion"
+  >[],
+) {
+  const existing = await listLocalDocuments();
+  const activeIds = new Set(documents.map(({ id }) => id));
+  const removedUris = existing
+    .filter(({ id, localUri }) => !activeIds.has(id) && localUri)
+    .map(({ localUri }) => localUri as string);
+  await db.withTransactionAsync(async () => {
+    for (const document of documents) {
+      await db.runAsync(
+        `INSERT INTO documents
+        (id, name, original_name, mime_type, size_bytes, checksum_sha256, version, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET name = excluded.name,
+          original_name = excluded.original_name, mime_type = excluded.mime_type,
+          size_bytes = excluded.size_bytes, checksum_sha256 = excluded.checksum_sha256,
+          version = excluded.version, updated_at = excluded.updated_at`,
+        document.id,
+        document.name,
+        document.originalName,
+        document.mimeType,
+        document.sizeBytes,
+        document.checksumSha256,
+        document.version,
+        document.updatedAt,
+      );
+    }
+    for (const existingDocument of existing) {
+      if (!activeIds.has(existingDocument.id))
+        await db.runAsync(
+          "DELETE FROM documents WHERE id = ?",
+          existingDocument.id,
+        );
+    }
+  });
+  return removedUris;
+}
+
+export async function markDocumentDownloaded(
+  id: string,
+  localUri: string,
+  checksum: string,
+  version: number,
+) {
+  await db.runAsync(
+    `UPDATE documents SET local_uri = ?, downloaded_checksum = ?, downloaded_version = ?
+     WHERE id = ?`,
+    localUri,
+    checksum,
+    version,
+    id,
+  );
+}
+
 export async function listLocalRecords() {
   return db.getAllAsync<LocalRecord>(`SELECT id, title, description, latitude, longitude,
     photo_uri as photoUri, photo_key as photoKey, captured_at as capturedAt,
@@ -116,6 +202,7 @@ export async function listLocalRecords() {
 export async function createLocalRecord(record: {
   id: string;
   title: string;
+  description: string | null;
   latitude: number | null;
   longitude: number | null;
   photoUri: string | null;
@@ -127,9 +214,10 @@ export async function createLocalRecord(record: {
     await db.runAsync(
       `INSERT INTO field_records
       (id, title, description, latitude, longitude, photo_uri, photo_key, captured_at, updated_at, deleted_at, version, sync_status)
-      VALUES (?, ?, NULL, ?, ?, ?, NULL, ?, ?, NULL, 0, 'PENDING')`,
+      VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, 0, 'PENDING')`,
       record.id,
       record.title,
+      record.description,
       record.latitude,
       record.longitude,
       record.photoUri,
@@ -143,6 +231,98 @@ export async function createLocalRecord(record: {
       record.capturedAt,
     );
   });
+}
+
+export async function updateLocalRecord(
+  id: string,
+  title: string,
+  description: string | null,
+) {
+  const record = await db.getFirstAsync<LocalRecord>(
+    `SELECT id, title, description, latitude, longitude, photo_uri as photoUri,
+     photo_key as photoKey, captured_at as capturedAt, updated_at as updatedAt,
+     deleted_at as deletedAt, version, sync_status as syncStatus
+     FROM field_records WHERE id = ? AND deleted_at IS NULL`,
+    id,
+  );
+  if (!record) throw new Error("Registro local não encontrado.");
+  if (record.syncStatus === "CONFLICT")
+    throw new Error("Resolva o conflito antes de editar este registro.");
+  const queued = await db.getFirstAsync<{ operationType: string }>(
+    "SELECT operation_type as operationType FROM sync_queue WHERE record_id = ?",
+    id,
+  );
+  const now = new Date().toISOString();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `UPDATE field_records SET title = ?, description = ?, updated_at = ?, sync_status = 'PENDING'
+       WHERE id = ?`,
+      title,
+      description,
+      now,
+      id,
+    );
+    if (!queued)
+      await db.runAsync(
+        `INSERT INTO sync_queue
+         (operation_id, record_id, operation_type, base_version, created_at)
+         VALUES (?, ?, 'UPDATE', ?, ?)`,
+        randomUUID(),
+        id,
+        record.version,
+        now,
+      );
+  });
+}
+
+export async function deleteLocalRecord(id: string) {
+  const record = await db.getFirstAsync<LocalRecord>(
+    `SELECT id, title, description, latitude, longitude, photo_uri as photoUri,
+     photo_key as photoKey, captured_at as capturedAt, updated_at as updatedAt,
+     deleted_at as deletedAt, version, sync_status as syncStatus
+     FROM field_records WHERE id = ? AND deleted_at IS NULL`,
+    id,
+  );
+  if (!record) throw new Error("Registro local não encontrado.");
+  if (record.syncStatus === "CONFLICT")
+    throw new Error("Resolva o conflito antes de excluir este registro.");
+  const queued = await db.getFirstAsync<{ operationType: string }>(
+    "SELECT operation_type as operationType FROM sync_queue WHERE record_id = ?",
+    id,
+  );
+  if (queued?.operationType === "CREATE") {
+    await db.withTransactionAsync(async () => {
+      await db.runAsync("DELETE FROM sync_queue WHERE record_id = ?", id);
+      await db.runAsync("DELETE FROM field_records WHERE id = ?", id);
+    });
+    return record.photoUri;
+  }
+  const now = new Date().toISOString();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `UPDATE field_records SET deleted_at = ?, updated_at = ?, sync_status = 'PENDING'
+       WHERE id = ?`,
+      now,
+      now,
+      id,
+    );
+    if (queued)
+      await db.runAsync(
+        "UPDATE sync_queue SET operation_type = 'DELETE' WHERE record_id = ?",
+        id,
+      );
+    else
+      await db.runAsync(
+        `INSERT INTO sync_queue
+         (operation_id, record_id, operation_type, base_version, created_at)
+         VALUES (?, ?, 'DELETE', ?, ?)`,
+        randomUUID(),
+        id,
+        record.version,
+        now,
+      );
+  });
+  return null;
 }
 
 export async function listPendingOperations() {

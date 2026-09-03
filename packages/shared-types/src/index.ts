@@ -36,3 +36,14 @@ export interface SyncConflict {
   reason: "VERSION_MISMATCH" | "RECORD_DELETED";
   serverRecord?: FieldRecord;
 }
+
+export interface DocumentMetadata {
+  id: string;
+  name: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  checksumSha256: string;
+  version: number;
+  updatedAt: string;
+}

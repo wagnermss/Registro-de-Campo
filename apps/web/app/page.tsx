@@ -7,6 +7,7 @@ import {
   clearTokens,
   saveTokens,
 } from "./auth-client";
+import Dashboard from "./dashboard";
 
 type Profile = { name: string; email: string; role: string };
 
@@ -49,45 +50,47 @@ export default function Home() {
     setProfile(null);
   }
 
-  if (profile)
-    return (
-      <main>
-        <p className="eyebrow">Sessão ativa</p>
-        <h1>Olá, {profile.name}</h1>
-        <p>
-          {profile.email} · {profile.role}
-        </p>
-        <p>O dashboard de registros será exibido aqui na próxima etapa.</p>
-        <button onClick={() => void logout()}>Sair</button>
-      </main>
-    );
+  if (profile) return <Dashboard profile={profile} onLogout={logout} />;
   return (
-    <main>
-      <p className="eyebrow">Registro de Campo</p>
-      <h1>Entrar</h1>
-      <form onSubmit={login}>
-        <label>
-          E-mail
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            required
-          />
-        </label>
-        <label>
-          Senha
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-            minLength={8}
-          />
-        </label>
-        {error && <p className="error">{error}</p>}
-        <button>Entrar</button>
-      </form>
+    <main className="login-shell">
+      <section className="login-card">
+        <div className="login-intro">
+          <span className="brand-mark">RC</span>
+          <p className="eyebrow">Registro de Campo</p>
+          <h1>Dados do campo, organizados em um só lugar.</h1>
+          <p>
+            Acompanhe registros, evidências fotográficas e localizações enviadas
+            pelas equipes.
+          </p>
+        </div>
+        <form className="login-form" onSubmit={login}>
+          <div>
+            <p className="eyebrow">Acesso seguro</p>
+            <h2>Entrar no painel</h2>
+          </div>
+          <label>
+            <span>E-mail</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </label>
+          <label>
+            <span>Senha</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              minLength={8}
+            />
+          </label>
+          {error && <p className="error">{error}</p>}
+          <button>Entrar</button>
+        </form>
+      </section>
     </main>
   );
 }

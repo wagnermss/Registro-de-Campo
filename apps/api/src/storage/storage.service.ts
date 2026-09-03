@@ -1,9 +1,12 @@
 import {
   CreateBucketCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
   HeadBucketCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Injectable, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { randomUUID } from "node:crypto";
@@ -50,5 +53,54 @@ export class StorageService implements OnModuleInit {
       }),
     );
     return key;
+  }
+
+  photoUrl(key: string) {
+    return getSignedUrl(
+      this.client,
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      { expiresIn: 15 * 60 },
+    );
+  }
+
+  async uploadDocument(
+    documentId: string,
+    version: number,
+    file: Express.Multer.File,
+  ) {
+    const extension =
+      file.originalname
+        .split(".")
+        .pop()
+        ?.replace(/[^a-zA-Z0-9]/g, "") || "bin";
+    const key = `documents/${documentId}/v${version}/${randomUUID()}.${extension}`;
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+      }),
+    );
+    return key;
+  }
+
+  documentUrl(key: string, filename: string) {
+    const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    return getSignedUrl(
+      this.client,
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        ResponseContentDisposition: `attachment; filename="${safeFilename}"`,
+      }),
+      { expiresIn: 15 * 60 },
+    );
+  }
+
+  async remove(key: string) {
+    await this.client.send(
+      new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
   }
 }

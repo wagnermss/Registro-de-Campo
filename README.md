@@ -15,14 +15,15 @@ O aplicativo mobile mantém os dados no próprio dispositivo, permitindo consult
 - Fila persistente de registros pendentes de sincronização.
 - Sincronização automática ao recuperar conectividade e acionamento manual.
 - Abertura offline com restauração da sessão local.
-- Download e visualização offline de documentos em desenvolvimento.
+- Catálogo, download e visualização offline de documentos.
+- Identificação de novas versões por versão e checksum SHA-256.
 
 ### Web
 
 - Autenticação integrada à mesma API do mobile.
 - Controle de acesso baseado no perfil do usuário.
-- Estrutura inicial do painel administrativo.
-- Dashboard de registros, mapa e gestão de documentos em desenvolvimento.
+- Dashboard administrativo com indicadores, filtros, fotografias e mapa.
+- Publicação, download, substituição e ativação de documentos.
 
 ### Backend
 
@@ -33,22 +34,23 @@ O aplicativo mobile mantém os dados no próprio dispositivo, permitindo consult
 - Persistência central em PostgreSQL com Prisma ORM.
 - Modelos para usuários, registros de campo, documentos e operações de sincronização.
 - Upload de fotografias para o MinIO por API compatível com S3.
+- Armazenamento versionado de documentos com links temporários de download.
 - Sincronização incremental por push/pull com operações idempotentes.
 
 ## Tecnologias
 
-| Camada           | Tecnologias                                    |
-| ---------------- | ---------------------------------------------- |
-| Mobile           | React Native, Expo, Expo Router e TypeScript   |
-| Dados locais     | Expo SQLite e Expo File System                 |
-| Recursos nativos | Expo Camera, Expo Location e Expo Secure Store |
-| Web              | Next.js, React e TypeScript                    |
-| API              | Node.js, NestJS, Passport e JWT                |
-| Persistência     | PostgreSQL e Prisma ORM                        |
-| Arquivos         | MinIO, com API compatível com Amazon S3        |
-| Infraestrutura   | Docker e Docker Compose                        |
-| Monorepo         | pnpm Workspaces                                |
-| Qualidade        | TypeScript e Prettier                          |
+| Camada           | Tecnologias                                   |
+| ---------------- | --------------------------------------------- |
+| Mobile           | React Native, Expo, Expo Router e TypeScript  |
+| Dados locais     | Expo SQLite e Expo File System                |
+| Recursos nativos | Expo Camera, Location, Secure Store e Sharing |
+| Web              | Next.js, React e TypeScript                   |
+| API              | Node.js, NestJS, Passport e JWT               |
+| Persistência     | PostgreSQL e Prisma ORM                       |
+| Arquivos         | MinIO, com API compatível com Amazon S3       |
+| Infraestrutura   | Docker e Docker Compose                       |
+| Monorepo         | pnpm Workspaces                               |
+| Qualidade        | TypeScript e Prettier                         |
 
 ## Arquitetura
 
@@ -64,7 +66,7 @@ packages/
 docs/        decisões e documentação de arquitetura
 ```
 
-O PostgreSQL é a fonte compartilhada de dados do servidor. No mobile, o SQLite funciona como fonte local, e cada novo registro recebe um identificador próprio e um estado de sincronização. Fotos são armazenadas no sistema de arquivos do dispositivo e referenciadas pelo banco local.
+O PostgreSQL é a fonte compartilhada de dados do servidor. No mobile, o SQLite funciona como fonte local, e cada novo registro recebe um identificador próprio e um estado de sincronização. Fotos e documentos baixados são armazenados no sistema de arquivos do dispositivo e referenciados pelo banco local.
 
 ## Sincronização e conflitos
 
@@ -76,4 +78,4 @@ Mais detalhes estão disponíveis em [docs/architecture.md](docs/architecture.md
 
 ## Estado do projeto
 
-O projeto está em desenvolvimento. A infraestrutura, autenticação, persistência central, criação offline, fila local, sincronização push/pull e upload de fotos já estão estruturados. As próximas entregas incluem dashboard web, documentos offline, edição sincronizada e interface de resolução de conflitos.
+O projeto está em desenvolvimento. A infraestrutura, autenticação, persistência central, criação offline, sincronização push/pull, dashboard web e documentos offline já estão estruturados. As próximas entregas incluem edição sincronizada, interface de resolução de conflitos, testes automatizados e refinamento visual.
