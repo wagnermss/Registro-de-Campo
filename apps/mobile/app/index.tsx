@@ -1,4 +1,5 @@
 import * as SecureStore from "expo-secure-store";
+import NetInfo from "@react-native-community/netinfo";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { randomUUID } from "expo-crypto";
 import * as FileSystem from "expo-file-system";
@@ -27,6 +28,7 @@ import {
   listLocalRecords,
   LocalRecord,
 } from "../src/local-db";
+import { syncPendingRecords } from "../src/sync-client";
 
 type Profile = { name: string; email: string; role: string };
 
@@ -42,11 +44,39 @@ export default function HomeScreen() {
   const [longitude, setLongitude] = useState<number | null>(null);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [cameraVisible, setCameraVisible] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState("");
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
+  const syncingRef = useRef(false);
   useEffect(() => {
     void restore();
   }, []);
+  useEffect(() => {
+    if (!profile) return;
+    return NetInfo.addEventListener((state) => {
+      if (state.isConnected && state.isInternetReachable !== false)
+        void syncNow();
+    });
+  }, [profile]);
+
+  async function syncNow() {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+    setSyncing(true);
+    try {
+      const result = await syncPendingRecords();
+      setRecords(await listLocalRecords());
+      setSyncMessage(
+        result.total === 0
+          ? "Tudo sincronizado"
+          : `${result.synced} de ${result.total} registro(s) sincronizado(s)`,
+      );
+    } finally {
+      syncingRef.current = false;
+      setSyncing(false);
+    }
+  }
   async function restore() {
     try {
       await initializeLocalDatabase();
@@ -129,6 +159,7 @@ export default function HomeScreen() {
       setLongitude(null);
       setPhotoUri(null);
       setError("");
+      void syncNow();
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -207,6 +238,12 @@ export default function HomeScreen() {
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Text style={styles.subtitle}>Registros locais</Text>
+        <Button
+          title={syncing ? "Sincronizando…" : "Sincronizar agora"}
+          disabled={syncing}
+          onPress={() => void syncNow()}
+        />
+        {syncMessage ? <Text style={styles.muted}>{syncMessage}</Text> : null}
         {records.map((record) => (
           <View style={styles.record} key={record.id}>
             <Text>{record.title}</Text>

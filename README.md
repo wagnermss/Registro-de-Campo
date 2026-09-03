@@ -12,9 +12,10 @@ O aplicativo mobile mantém os dados no próprio dispositivo, permitindo consult
 - Persistência local com SQLite.
 - Criação e consulta de registros offline.
 - Captura de fotografia e geolocalização.
-- Identificação de registros pendentes de sincronização.
+- Fila persistente de registros pendentes de sincronização.
+- Sincronização automática ao recuperar conectividade e acionamento manual.
 - Abertura offline com restauração da sessão local.
-- Sincronização automática e documentos offline em desenvolvimento.
+- Download e visualização offline de documentos em desenvolvimento.
 
 ### Web
 
@@ -31,7 +32,8 @@ O aplicativo mobile mantém os dados no próprio dispositivo, permitindo consult
 - Validação de dados recebidos pela API.
 - Persistência central em PostgreSQL com Prisma ORM.
 - Modelos para usuários, registros de campo, documentos e operações de sincronização.
-- Armazenamento de fotos e documentos com MinIO/S3 em desenvolvimento.
+- Upload de fotografias para o MinIO por API compatível com S3.
+- Sincronização incremental por push/pull com operações idempotentes.
 
 ## Tecnologias
 
@@ -74,4 +76,4 @@ Mais detalhes estão disponíveis em [docs/architecture.md](docs/architecture.md
 
 ## Estado do projeto
 
-O projeto está em desenvolvimento. A infraestrutura, autenticação, persistência central e criação local de registros offline já estão estruturadas. As próximas entregas incluem sincronização automática, upload de fotos, dashboard web, documentos offline e interface de resolução de conflitos.
+O projeto está em desenvolvimento. A infraestrutura, autenticação, persistência central, criação offline, fila local, sincronização push/pull e upload de fotos já estão estruturados. As próximas entregas incluem dashboard web, documentos offline, edição sincronizada e interface de resolução de conflitos.
