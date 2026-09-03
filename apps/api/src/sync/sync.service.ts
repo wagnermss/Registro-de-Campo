@@ -26,13 +26,23 @@ export class SyncService {
       where: { id: operation.operationId },
       include: { record: true },
     });
-    if (previous)
+    if (previous) {
+      if (previous.userId !== userId)
+        return {
+          operationId: operation.operationId,
+          recordId: operation.recordId,
+          status: SyncOperationStatus.REJECTED,
+        };
       return {
         operationId: operation.operationId,
         recordId: operation.recordId,
         status: previous.status,
         version: previous.record.version,
+        ...(previous.status === SyncOperationStatus.CONFLICT
+          ? { serverRecord: this.serialize(previous.record) }
+          : {}),
       };
+    }
     const current = await this.prisma.fieldRecord.findUnique({
       where: { id: operation.recordId },
     });
@@ -73,31 +83,34 @@ export class SyncService {
       };
     }
 
-    if (
-      !current ||
-      current.userId !== userId ||
-      current.version !== operation.baseVersion
-    ) {
-      if (current)
-        await this.prisma.syncOperation.create({
-          data: {
-            id: operation.operationId,
-            recordId: current.id,
-            userId,
-            type: operation.type,
-            baseVersion: operation.baseVersion,
-            payload: operation.payload as unknown as Prisma.InputJsonValue,
-            status: SyncOperationStatus.CONFLICT,
-            processedAt: new Date(),
-          },
-        });
+    if (!current || current.userId !== userId) {
       return {
         operationId: operation.operationId,
         recordId: operation.recordId,
-        status: current
-          ? SyncOperationStatus.CONFLICT
-          : SyncOperationStatus.REJECTED,
-        version: current?.version,
+        status: SyncOperationStatus.REJECTED,
+      };
+    }
+
+    if (current.version !== operation.baseVersion) {
+      await this.prisma.syncOperation.create({
+        data: {
+          id: operation.operationId,
+          recordId: current.id,
+          userId,
+          type: operation.type,
+          baseVersion: operation.baseVersion,
+          payload: operation.payload as unknown as Prisma.InputJsonValue,
+          status: SyncOperationStatus.CONFLICT,
+          processedAt: new Date(),
+        },
+      });
+      return {
+        operationId: operation.operationId,
+        recordId: operation.recordId,
+        status: SyncOperationStatus.CONFLICT,
+        version: current.version,
+        reason: current.deletedAt ? "RECORD_DELETED" : "VERSION_MISMATCH",
+        serverRecord: this.serialize(current),
       };
     }
 
@@ -113,6 +126,7 @@ export class SyncService {
                 latitude: operation.payload.latitude,
                 longitude: operation.payload.longitude,
                 photoKey: operation.payload.photoKey,
+                deletedAt: null,
                 version: { increment: 1 },
               },
       });
@@ -157,6 +171,28 @@ export class SyncService {
         accuracy: record.accuracy === null ? null : Number(record.accuracy),
       })),
       cursor: upperBound.toISOString(),
+    };
+  }
+
+  private serialize(record: {
+    id: string;
+    userId: string;
+    title: string;
+    description: string | null;
+    latitude: Prisma.Decimal;
+    longitude: Prisma.Decimal;
+    accuracy: Prisma.Decimal | null;
+    capturedAt: Date;
+    photoKey: string | null;
+    version: number;
+    updatedAt: Date;
+    deletedAt: Date | null;
+  }) {
+    return {
+      ...record,
+      latitude: Number(record.latitude),
+      longitude: Number(record.longitude),
+      accuracy: record.accuracy === null ? null : Number(record.accuracy),
     };
   }
 }

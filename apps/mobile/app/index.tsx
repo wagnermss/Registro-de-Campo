@@ -31,13 +31,17 @@ import {
   syncDocumentCatalog,
 } from "../src/document-client";
 import {
+  acceptServerConflict,
   createLocalRecord,
   deleteLocalRecord,
   initializeLocalDatabase,
   listLocalRecords,
   listLocalDocuments,
+  listLocalConflicts,
   LocalDocument,
+  LocalConflict,
   LocalRecord,
+  keepLocalConflict,
   updateLocalRecord,
 } from "../src/local-db";
 import { syncPendingRecords } from "../src/sync-client";
@@ -52,6 +56,9 @@ export default function HomeScreen() {
   const [error, setError] = useState("");
   const [records, setRecords] = useState<LocalRecord[]>([]);
   const [documents, setDocuments] = useState<LocalDocument[]>([]);
+  const [conflicts, setConflicts] = useState<LocalConflict[]>([]);
+  const [selectedConflict, setSelectedConflict] =
+    useState<LocalConflict | null>(null);
   const [view, setView] = useState<"records" | "documents">("documents");
   const [documentBusyId, setDocumentBusyId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -88,6 +95,7 @@ export default function HomeScreen() {
       const documentCount = await syncDocumentCatalog();
       setRecords(await listLocalRecords());
       setDocuments(await listLocalDocuments());
+      setConflicts(await listLocalConflicts());
       setSyncMessage(
         result.total === 0
           ? `Tudo sincronizado · ${documentCount} documento(s)`
@@ -109,6 +117,7 @@ export default function HomeScreen() {
       await initializeLocalDatabase();
       setRecords(await listLocalRecords());
       setDocuments(await listLocalDocuments());
+      setConflicts(await listLocalConflicts());
       const savedProfile = await SecureStore.getItemAsync(sessionKeys.profile);
       if (savedProfile) setProfile(JSON.parse(savedProfile));
       void authenticatedFetch("/auth/me")
@@ -282,6 +291,45 @@ export default function HomeScreen() {
       );
     }
   }
+  async function useServerVersion() {
+    if (!selectedConflict) return;
+    try {
+      const discardedPhoto = await acceptServerConflict(selectedConflict);
+      if (discardedPhoto)
+        await FileSystem.deleteAsync(discardedPhoto, {
+          idempotent: true,
+        }).catch(() => undefined);
+      setRecords(await listLocalRecords());
+      setConflicts(await listLocalConflicts());
+      setSelectedConflict(null);
+      setError("");
+      setSyncMessage("A versão do servidor foi aplicada.");
+    } catch (conflictError) {
+      setError(
+        conflictError instanceof Error
+          ? conflictError.message
+          : "Não foi possível resolver o conflito.",
+      );
+    }
+  }
+  async function useLocalVersion() {
+    if (!selectedConflict) return;
+    try {
+      await keepLocalConflict(selectedConflict);
+      setRecords(await listLocalRecords());
+      setConflicts(await listLocalConflicts());
+      setSelectedConflict(null);
+      setError("");
+      setSyncMessage("Alteração local pronta para uma nova sincronização.");
+      void syncNow();
+    } catch (conflictError) {
+      setError(
+        conflictError instanceof Error
+          ? conflictError.message
+          : "Não foi possível resolver o conflito.",
+      );
+    }
+  }
   async function handleDocumentDownload(document: LocalDocument) {
     setDocumentBusyId(document.id);
     setError("");
@@ -359,6 +407,16 @@ export default function HomeScreen() {
         {view === "records" ? (
           <>
             <Text style={styles.text}>Novo registro offline</Text>
+            {conflicts.length > 0 ? (
+              <View style={styles.conflictSummary}>
+                <Text style={styles.conflictSummaryTitle}>
+                  {conflicts.length} conflito(s) aguardando decisão
+                </Text>
+                <Text style={styles.muted}>
+                  Abra o registro sinalizado para comparar as versões.
+                </Text>
+              </View>
+            ) : null}
             <TextInput
               style={styles.input}
               value={title}
@@ -415,17 +473,31 @@ export default function HomeScreen() {
                   {new Date(record.capturedAt).toLocaleString()}
                 </Text>
                 <View style={styles.recordActions}>
-                  <Button
-                    title="Editar"
-                    disabled={record.syncStatus === "CONFLICT"}
-                    onPress={() => beginEditing(record)}
-                  />
-                  <Button
-                    title="Excluir"
-                    color="#a21d22"
-                    disabled={record.syncStatus === "CONFLICT"}
-                    onPress={() => requestDelete(record)}
-                  />
+                  {record.syncStatus === "CONFLICT" ? (
+                    <Button
+                      title="Resolver conflito"
+                      color="#a86600"
+                      onPress={() =>
+                        setSelectedConflict(
+                          conflicts.find(
+                            ({ localRecord }) => localRecord.id === record.id,
+                          ) ?? null,
+                        )
+                      }
+                    />
+                  ) : (
+                    <>
+                      <Button
+                        title="Editar"
+                        onPress={() => beginEditing(record)}
+                      />
+                      <Button
+                        title="Excluir"
+                        color="#a21d22"
+                        onPress={() => requestDelete(record)}
+                      />
+                    </>
+                  )}
                 </View>
               </View>
             ))}
@@ -465,6 +537,86 @@ export default function HomeScreen() {
                     />
                   </View>
                 </View>
+              </View>
+            </Modal>
+            <Modal
+              visible={selectedConflict !== null}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setSelectedConflict(null)}
+            >
+              <View style={styles.modalOverlay}>
+                <ScrollView contentContainerStyle={styles.conflictModal}>
+                  <Text style={styles.subtitle}>Resolver conflito</Text>
+                  <Text style={styles.conflictHelp}>
+                    Escolha qual versão deve permanecer. A decisão será aplicada
+                    ao registro completo.
+                  </Text>
+                  <View style={styles.versionCard}>
+                    <Text style={styles.versionLabel}>Neste dispositivo</Text>
+                    <Text style={styles.recordTitle}>
+                      {selectedConflict?.localRecord.title}
+                    </Text>
+                    <Text style={styles.recordDescription}>
+                      {selectedConflict?.localRecord.description ||
+                        "Sem descrição"}
+                    </Text>
+                    <Text style={styles.muted}>
+                      {selectedConflict?.localRecord.latitude.toFixed(5)},{" "}
+                      {selectedConflict?.localRecord.longitude.toFixed(5)} · v
+                      {selectedConflict?.localRecord.version}
+                    </Text>
+                  </View>
+                  <View style={styles.versionCard}>
+                    <Text style={styles.versionLabel}>No servidor</Text>
+                    {selectedConflict?.serverRecord ? (
+                      <>
+                        {selectedConflict.serverRecord.deletedAt ? (
+                          <Text style={styles.deletedVersion}>
+                            Este registro foi excluído no servidor.
+                          </Text>
+                        ) : (
+                          <>
+                            <Text style={styles.recordTitle}>
+                              {selectedConflict.serverRecord.title}
+                            </Text>
+                            <Text style={styles.recordDescription}>
+                              {selectedConflict.serverRecord.description ||
+                                "Sem descrição"}
+                            </Text>
+                          </>
+                        )}
+                        <Text style={styles.muted}>
+                          {selectedConflict.serverRecord.latitude.toFixed(5)},{" "}
+                          {selectedConflict.serverRecord.longitude.toFixed(5)} ·
+                          v{selectedConflict.serverRecord.version}
+                        </Text>
+                      </>
+                    ) : (
+                      <Text style={styles.deletedVersion}>
+                        Sincronize novamente para carregar esta versão.
+                      </Text>
+                    )}
+                  </View>
+                  <View style={styles.conflictActions}>
+                    <Button
+                      title="Cancelar"
+                      color="#6b7770"
+                      onPress={() => setSelectedConflict(null)}
+                    />
+                    <Button
+                      title="Usar servidor"
+                      disabled={!selectedConflict?.serverRecord}
+                      onPress={() => void useServerVersion()}
+                    />
+                    <Button
+                      title="Manter versão local"
+                      color="#a86600"
+                      disabled={!selectedConflict?.serverRecord}
+                      onPress={() => void useLocalVersion()}
+                    />
+                  </View>
+                </ScrollView>
               </View>
             </Modal>
           </>
@@ -593,6 +745,15 @@ const styles = StyleSheet.create({
   recordTitle: { color: "#193126", fontSize: 16, fontWeight: "700" },
   recordDescription: { color: "#496052", lineHeight: 20 },
   recordActions: { flexDirection: "row", gap: 8, marginTop: 5 },
+  conflictSummary: {
+    backgroundColor: "#fff3d8",
+    borderColor: "#e3bc70",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 3,
+    padding: 12,
+  },
+  conflictSummaryTitle: { color: "#754b00", fontWeight: "700" },
   muted: { color: "#496052", fontSize: 12 },
   photo: { width: "100%", height: 200, borderRadius: 8 },
   tabs: {
@@ -642,6 +803,30 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     marginTop: 4,
   },
+  conflictModal: {
+    backgroundColor: "white",
+    borderRadius: 14,
+    gap: 12,
+    padding: 20,
+    width: "100%",
+  },
+  conflictHelp: { color: "#496052", lineHeight: 20 },
+  versionCard: {
+    backgroundColor: "#f2f5f2",
+    borderColor: "#d7e0d9",
+    borderRadius: 9,
+    borderWidth: 1,
+    gap: 6,
+    padding: 13,
+  },
+  versionLabel: {
+    color: "#496052",
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  deletedVersion: { color: "#a21d22", fontWeight: "700" },
+  conflictActions: { gap: 8, marginTop: 4 },
   camera: { flex: 1 },
   cameraControls: {
     flex: 1,

@@ -11,6 +11,7 @@ O aplicativo mobile mantém os dados no próprio dispositivo, permitindo consult
 - Autenticação com sessão armazenada no Keychain/Keystore do dispositivo.
 - Persistência local com SQLite.
 - Criação e consulta de registros offline.
+- Edição e exclusão lógica de registros offline.
 - Captura de fotografia e geolocalização.
 - Fila persistente de registros pendentes de sincronização.
 - Sincronização automática ao recuperar conectividade e acionamento manual.
@@ -74,8 +75,10 @@ A estratégia planejada combina operações idempotentes e versionamento otimist
 
 Caso as versões sejam diferentes, a operação é identificada como conflito e a versão local é preservada para resolução, evitando perda silenciosa de dados. A sincronização será realizada em duas fases: envio das operações locais pendentes e download incremental das alterações do servidor.
 
+No mobile, o usuário pode comparar a versão local com a versão atual do servidor. Ao aceitar o servidor, a operação pendente é descartada; ao manter a versão local, ela é reaplicada sobre a versão mais recente com um novo identificador idempotente.
+
 Mais detalhes estão disponíveis em [docs/architecture.md](docs/architecture.md).
 
 ## Estado do projeto
 
-O projeto está em desenvolvimento. A infraestrutura, autenticação, persistência central, criação offline, sincronização push/pull, dashboard web e documentos offline já estão estruturados. As próximas entregas incluem edição sincronizada, interface de resolução de conflitos, testes automatizados e refinamento visual.
+O projeto está em desenvolvimento. A infraestrutura, autenticação, persistência central, criação, edição e exclusão offline, sincronização push/pull, resolução de conflitos, dashboard web e documentos offline já estão estruturados. As próximas entregas incluem testes automatizados, refinamento visual e preparação para produção.

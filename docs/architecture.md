@@ -13,7 +13,7 @@ O sistema adota uma abordagem offline-first. O app mobile persiste registros, op
 
 O cliente envia operações idempotentes (`operationId`) e depois busca alterações posteriores ao cursor local. Cada registro possui UUID, `version` e `updatedAt`.
 
-Atualizações usam versionamento otimista: o servidor aceita uma operação apenas se `baseVersion` corresponder à versão atual. Em divergência, retorna conflito e a versão do servidor. O app preserva a alteração local para escolha do usuário, impedindo perda silenciosa de informação. Alterações em campos diferentes poderão ser mescladas pelo servidor em uma etapa posterior; foto, exclusão e mudança concorrente do mesmo campo exigirão decisão explícita.
+Atualizações usam versionamento otimista: o servidor aceita uma operação apenas se `baseVersion` corresponder à versão atual. Em divergência, retorna conflito e a versão do servidor. O app preserva a alteração local para escolha do usuário, impedindo perda silenciosa de informação. O usuário pode aceitar integralmente o servidor ou reaplicar a versão local sobre a versão mais recente. Uma futura evolução poderá mesclar automaticamente alterações em campos independentes.
 
 ### Protocolo implementado
 
@@ -21,6 +21,10 @@ Atualizações usam versionamento otimista: o servidor aceita uma operação ape
 - `POST /api/sync/push` recebe operações em lote, usa `operationId` para idempotência e valida `baseVersion`.
 - `GET /api/sync/pull` devolve alterações posteriores ao cursor do cliente.
 - O mobile mantém `field_records`, `sync_queue` e `sync_state` no SQLite.
+- Edições sincronizadas geram operações `UPDATE`; exclusões geram `DELETE` com exclusão lógica no servidor.
+- Alterações sucessivas no mesmo registro são consolidadas em uma única operação pendente.
+- Conflitos armazenam no SQLite a cópia retornada pelo servidor para comparação offline.
+- Ao manter a versão local, o app cria uma nova operação idempotente baseada na versão atual do servidor.
 - O retorno da conectividade dispara upload, push e pull sem bloquear o uso offline.
 
 ## Documentos offline

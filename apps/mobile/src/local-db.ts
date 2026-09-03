@@ -18,6 +18,16 @@ export type LocalRecord = {
   syncStatus: "PENDING" | "SYNCED" | "CONFLICT";
 };
 
+export type ServerRecord = Omit<LocalRecord, "photoUri" | "syncStatus">;
+
+export type LocalConflict = {
+  operationId: string;
+  operationType: "CREATE" | "UPDATE" | "DELETE";
+  message: string | null;
+  localRecord: LocalRecord;
+  serverRecord: ServerRecord | null;
+};
+
 export type PendingOperation = LocalRecord & {
   operationId: string;
   operationType: "CREATE" | "UPDATE" | "DELETE";
@@ -96,9 +106,15 @@ export async function initializeLocalDatabase() {
   await db.execAsync(`CREATE TABLE IF NOT EXISTS sync_queue (
     operation_id TEXT PRIMARY KEY NOT NULL, record_id TEXT NOT NULL UNIQUE,
     operation_type TEXT NOT NULL, base_version INTEGER NOT NULL DEFAULT 0,
-    attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, created_at TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, server_payload TEXT,
+    created_at TEXT NOT NULL,
     FOREIGN KEY (record_id) REFERENCES field_records(id) ON DELETE CASCADE
   );`);
+  const queueColumns = await db.getAllAsync<{ name: string }>(
+    "PRAGMA table_info(sync_queue)",
+  );
+  if (!queueColumns.some(({ name }) => name === "server_payload"))
+    await db.execAsync("ALTER TABLE sync_queue ADD COLUMN server_payload TEXT");
   await db.execAsync(`CREATE TABLE IF NOT EXISTS sync_state (
     key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL
   );`);
@@ -364,16 +380,115 @@ export async function markOperationConflict(
   operationId: string,
   recordId: string,
   message: string,
+  serverRecord?: ServerRecord,
 ) {
   await db.runAsync(
     "UPDATE field_records SET sync_status = 'CONFLICT' WHERE id = ?",
     recordId,
   );
   await db.runAsync(
-    "UPDATE sync_queue SET attempts = attempts + 1, last_error = ? WHERE operation_id = ?",
+    `UPDATE sync_queue SET attempts = attempts + 1, last_error = ?, server_payload = ?
+     WHERE operation_id = ?`,
     message,
+    serverRecord ? JSON.stringify(serverRecord) : null,
     operationId,
   );
+}
+
+export async function listLocalConflicts() {
+  const rows = await db.getAllAsync<
+    LocalRecord & {
+      operationId: string;
+      operationType: "CREATE" | "UPDATE" | "DELETE";
+      message: string | null;
+      serverPayload: string | null;
+    }
+  >(`SELECT r.id, r.title, r.description, r.latitude, r.longitude,
+    r.photo_uri as photoUri, r.photo_key as photoKey, r.captured_at as capturedAt,
+    r.updated_at as updatedAt, r.deleted_at as deletedAt, r.version,
+    r.sync_status as syncStatus, q.operation_id as operationId,
+    q.operation_type as operationType, q.last_error as message,
+    q.server_payload as serverPayload
+    FROM sync_queue q JOIN field_records r ON r.id = q.record_id
+    WHERE r.sync_status = 'CONFLICT' ORDER BY q.created_at ASC`);
+  return rows.map(
+    ({
+      operationId,
+      operationType,
+      message,
+      serverPayload,
+      ...localRecord
+    }) => ({
+      operationId,
+      operationType,
+      message,
+      localRecord,
+      serverRecord: serverPayload
+        ? (JSON.parse(serverPayload) as ServerRecord)
+        : null,
+    }),
+  );
+}
+
+export async function acceptServerConflict(conflict: LocalConflict) {
+  if (!conflict.serverRecord)
+    throw new Error("Sincronize novamente para obter a versão do servidor.");
+  const server = conflict.serverRecord;
+  const discardPhoto =
+    conflict.localRecord.photoUri &&
+    conflict.localRecord.photoKey !== server.photoKey
+      ? conflict.localRecord.photoUri
+      : null;
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `UPDATE field_records SET title = ?, description = ?, latitude = ?, longitude = ?,
+       photo_uri = CASE WHEN photo_key = ? THEN photo_uri ELSE NULL END,
+       photo_key = ?, captured_at = ?, updated_at = ?, deleted_at = ?, version = ?,
+       sync_status = 'SYNCED' WHERE id = ?`,
+      server.title,
+      server.description,
+      server.latitude,
+      server.longitude,
+      server.photoKey,
+      server.photoKey,
+      server.capturedAt,
+      server.updatedAt,
+      server.deletedAt,
+      server.version,
+      server.id,
+    );
+    await db.runAsync(
+      "DELETE FROM sync_queue WHERE operation_id = ?",
+      conflict.operationId,
+    );
+  });
+  return discardPhoto;
+}
+
+export async function keepLocalConflict(conflict: LocalConflict) {
+  if (!conflict.serverRecord)
+    throw new Error("Sincronize novamente para obter a versão do servidor.");
+  const server = conflict.serverRecord;
+  const operationId = randomUUID();
+  const now = new Date().toISOString();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `UPDATE sync_queue SET operation_id = ?, base_version = ?, attempts = 0,
+       last_error = NULL, server_payload = NULL, created_at = ?
+       WHERE operation_id = ?`,
+      operationId,
+      server.version,
+      now,
+      conflict.operationId,
+    );
+    await db.runAsync(
+      `UPDATE field_records SET version = ?, updated_at = ?, sync_status = 'PENDING'
+       WHERE id = ?`,
+      server.version,
+      now,
+      conflict.localRecord.id,
+    );
+  });
 }
 
 export async function markOperationFailed(
@@ -394,8 +509,6 @@ export async function getSyncCursor() {
     )
   )?.value;
 }
-
-type ServerRecord = Omit<LocalRecord, "photoUri" | "syncStatus">;
 
 export async function applyServerChanges(
   records: ServerRecord[],

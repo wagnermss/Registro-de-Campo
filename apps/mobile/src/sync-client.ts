@@ -72,7 +72,10 @@ export async function syncPendingRecords() {
         await markOperationConflict(
           operation.operationId,
           operation.id,
-          `Servidor retornou ${result.status}`,
+          result.reason === "RECORD_DELETED"
+            ? "O registro foi excluído no servidor."
+            : `Servidor retornou ${result.status}`,
+          result.serverRecord,
         );
     } catch (error) {
       await markOperationFailed(
