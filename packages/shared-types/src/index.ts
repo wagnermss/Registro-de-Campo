@@ -1,6 +1,6 @@
-export type UserRole = 'ADMIN' | 'FIELD_USER';
+export type UserRole = "ADMIN" | "FIELD_USER";
 
-export type SyncOperationType = 'CREATE' | 'UPDATE' | 'DELETE';
+export type SyncOperationType = "CREATE" | "UPDATE" | "DELETE";
 
 export interface GeoLocation {
   latitude: number;
@@ -33,6 +33,6 @@ export interface SyncOperation {
 export interface SyncConflict {
   operationId: string;
   recordId: string;
-  reason: 'VERSION_MISMATCH' | 'RECORD_DELETED';
+  reason: "VERSION_MISMATCH" | "RECORD_DELETED";
   serverRecord?: FieldRecord;
 }

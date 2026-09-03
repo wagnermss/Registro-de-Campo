@@ -16,7 +16,19 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Permita que o Registro de Campo use a câmera para fotografar os registros."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Permita que o Registro de Campo use sua localização durante a coleta."
+        }
+      ]
     ]
   }
 }
