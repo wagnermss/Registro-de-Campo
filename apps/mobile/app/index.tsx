@@ -8,7 +8,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Button,
   Image,
   Modal,
   Pressable,
@@ -18,6 +17,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { AppButton as Button } from "../src/ui/button";
 import {
   authenticatedFetch,
   clearSession,

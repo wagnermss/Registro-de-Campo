@@ -13,6 +13,9 @@
     "android": {
       "package": "com.registrodecampo.app"
     },
+    "web": {
+      "bundler": "metro"
+    },
     "plugins": [
       "expo-router",
       "expo-secure-store",

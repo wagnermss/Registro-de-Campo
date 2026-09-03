@@ -1,5 +1,58 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-strong: var(--primary-strong);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted-surface);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
 :root {
   color-scheme: light;
+  --background: #f3f5f2;
+  --foreground: #183229;
+  --card: #ffffff;
+  --card-foreground: #183229;
+  --primary: #285d45;
+  --primary-strong: #173e2d;
+  --primary-foreground: #ffffff;
+  --secondary: #e8f0eb;
+  --secondary-foreground: #173e2d;
+  --muted-surface: #eef2ef;
+  --muted-foreground: #66766e;
+  --accent: #f3a712;
+  --accent-foreground: #263329;
+  --destructive: #a9262b;
+  --border: #dce4df;
+  --input: #cdd8d1;
+  --ring: #285d45;
+  --success: #17623e;
+  --success-soft: #dff2e8;
+  --warning: #754b00;
+  --warning-soft: #fff3d8;
+  --radius: 0.75rem;
   --ink: #183229;
   --muted: #66766e;
   --green: #285d45;
@@ -107,11 +160,25 @@ button {
   margin: 0.25rem 0 1.25rem;
   max-width: 600px;
 }
-.login-intro > p:last-child {
+.login-intro > p:not(.eyebrow) {
   color: #4f6558;
   line-height: 1.6;
   margin: 0;
   max-width: 520px;
+}
+.login-capability {
+  align-items: center;
+  color: #365447;
+  display: flex;
+  font-size: 0.78rem;
+  font-weight: 700;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+.login-security {
+  align-items: center;
+  display: flex;
+  gap: 0.4rem;
 }
 .login-form {
   align-content: center;
@@ -160,6 +227,22 @@ button {
 button:hover:not(:disabled) {
   background: var(--green-dark);
   border-color: var(--green-dark);
+}
+button[data-variant="destructive"],
+button[data-variant="destructive"]:hover:not(:disabled) {
+  background: var(--destructive);
+  border-color: var(--destructive);
+  color: #fff;
+}
+button[data-variant="secondary"] {
+  background: var(--background);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+button[data-variant="secondary"]:hover:not(:disabled) {
+  background: var(--secondary);
+  border-color: #b8c9bf;
+  color: var(--primary-strong);
 }
 button:disabled {
   cursor: not-allowed;
@@ -407,6 +490,9 @@ button:disabled {
 .feedback.success {
   background: #dff2e8;
   color: #17623e;
+}
+.record-feedback {
+  margin-top: -0.5rem;
 }
 .documents-card {
   background: var(--surface);
@@ -693,6 +779,15 @@ dd {
   border-radius: 0.65rem;
   height: 210px;
   overflow: hidden;
+  width: 100%;
+}
+.record-map {
+  isolation: isolate;
+  position: relative;
+  z-index: 0;
+}
+.delete-record-button {
+  margin-top: 1rem;
   width: 100%;
 }
 .map-placeholder {

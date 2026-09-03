@@ -81,6 +81,21 @@ export class RecordsService {
     return this.serialize(item);
   }
 
+  async remove(id: string) {
+    const result = await this.prisma.fieldRecord.updateMany({
+      where: { id, deletedAt: null },
+      data: { deletedAt: new Date(), version: { increment: 1 } },
+    });
+    if (result.count === 0)
+      throw new NotFoundException("Registro não encontrado");
+
+    const record = await this.prisma.fieldRecord.findUniqueOrThrow({
+      where: { id },
+      select: { id: true, version: true, deletedAt: true },
+    });
+    return record;
+  }
+
   private async serialize<
     T extends {
       latitude: Prisma.Decimal;

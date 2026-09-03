@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -23,5 +24,9 @@ export class RecordsController {
   }
   @Get(":id") detail(@Param("id", new ParseUUIDPipe()) id: string) {
     return this.records.detail(id);
+  }
+
+  @Delete(":id") remove(@Param("id", new ParseUUIDPipe()) id: string) {
+    return this.records.remove(id);
   }
 }

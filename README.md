@@ -23,7 +23,7 @@ O aplicativo mobile mantém os dados no próprio dispositivo, permitindo consult
 
 - Autenticação integrada à mesma API do mobile.
 - Controle de acesso baseado no perfil do usuário.
-- Dashboard administrativo com indicadores, filtros, fotografias e mapa.
+- Dashboard administrativo com indicadores, filtros, fotografias, mapa e exclusão lógica de registros.
 - Publicação, download, substituição e ativação de documentos.
 
 ### Backend
@@ -40,18 +40,18 @@ O aplicativo mobile mantém os dados no próprio dispositivo, permitindo consult
 
 ## Tecnologias
 
-| Camada           | Tecnologias                                   |
-| ---------------- | --------------------------------------------- |
-| Mobile           | React Native, Expo, Expo Router e TypeScript  |
-| Dados locais     | Expo SQLite e Expo File System                |
-| Recursos nativos | Expo Camera, Location, Secure Store e Sharing |
-| Web              | Next.js, React e TypeScript                   |
-| API              | Node.js, NestJS, Passport e JWT               |
-| Persistência     | PostgreSQL e Prisma ORM                       |
-| Arquivos         | MinIO, com API compatível com Amazon S3       |
-| Infraestrutura   | Docker e Docker Compose                       |
-| Monorepo         | pnpm Workspaces                               |
-| Qualidade        | TypeScript e Prettier                         |
+| Camada           | Tecnologias                                              |
+| ---------------- | -------------------------------------------------------- |
+| Mobile           | React Native, Expo, Expo Router, NativeWind e TypeScript |
+| Dados locais     | Expo SQLite e Expo File System                           |
+| Recursos nativos | Expo Camera, Location, Secure Store e Sharing            |
+| Web              | Next.js, React, shadcn/ui, Tailwind CSS e TypeScript     |
+| API              | Node.js, NestJS, Passport e JWT                          |
+| Persistência     | PostgreSQL e Prisma ORM                                  |
+| Arquivos         | MinIO, com API compatível com Amazon S3                  |
+| Infraestrutura   | Docker e Docker Compose                                  |
+| Monorepo         | pnpm Workspaces                                          |
+| Qualidade        | TypeScript e Prettier                                    |
 
 ## Arquitetura
 
@@ -69,6 +69,8 @@ docs/        decisões e documentação de arquitetura
 
 O PostgreSQL é a fonte compartilhada de dados do servidor. No mobile, o SQLite funciona como fonte local, e cada novo registro recebe um identificador próprio e um estado de sincronização. Fotos e documentos baixados são armazenados no sistema de arquivos do dispositivo e referenciados pelo banco local.
 
+Web e mobile compartilham a mesma linguagem visual: verde operacional, superfícies minerais claras, âmbar para atenção, cantos moderados e uma escala consistente de espaçamento. O web usa componentes locais do shadcn/ui sobre Tailwind CSS; o mobile implementa equivalentes nativos com NativeWind, preservando comportamento e acessibilidade próprios de iOS e Android.
+
 ## Sincronização e conflitos
 
 A estratégia planejada combina operações idempotentes e versionamento otimista. Cada operação possui um identificador único, e cada registro mantém uma versão. O servidor compara a versão base enviada pelo cliente com a versão atual antes de aceitar uma alteração.
@@ -81,4 +83,4 @@ Mais detalhes estão disponíveis em [docs/architecture.md](docs/architecture.md
 
 ## Estado do projeto
 
-O projeto está em desenvolvimento. A infraestrutura, autenticação, persistência central, criação, edição e exclusão offline, sincronização push/pull, resolução de conflitos, dashboard web e documentos offline já estão estruturados. As próximas entregas incluem testes automatizados, refinamento visual e preparação para produção.
+O projeto está em desenvolvimento. A infraestrutura, autenticação, persistência central, criação, edição e exclusão offline, sincronização push/pull, resolução de conflitos, dashboard web e documentos offline já estão estruturados. O sistema visual compartilhado está em implantação. As próximas entregas incluem concluir essa migração, adicionar testes automatizados e preparar a aplicação para produção.

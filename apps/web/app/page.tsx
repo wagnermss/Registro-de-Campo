@@ -1,6 +1,9 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { ArrowRight, LockKeyhole, MapPinned, WifiOff } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   API_URL,
   authenticatedFetch,
@@ -55,22 +58,30 @@ export default function Home() {
     <main className="login-shell">
       <section className="login-card">
         <div className="login-intro">
-          <span className="brand-mark">RC</span>
+          <span className="brand-mark" aria-label="Registro de Campo">
+            <MapPinned size={19} aria-hidden="true" />
+          </span>
           <p className="eyebrow">Registro de Campo</p>
           <h1>Dados do campo, organizados em um só lugar.</h1>
           <p>
             Acompanhe registros, evidências fotográficas e localizações enviadas
             pelas equipes.
           </p>
+          <div className="login-capability">
+            <WifiOff size={17} aria-hidden="true" />
+            <span>Coleta disponível mesmo sem conexão</span>
+          </div>
         </div>
         <form className="login-form" onSubmit={login}>
           <div>
-            <p className="eyebrow">Acesso seguro</p>
+            <p className="eyebrow login-security">
+              <LockKeyhole size={14} aria-hidden="true" /> Acesso seguro
+            </p>
             <h2>Entrar no painel</h2>
           </div>
           <label>
             <span>E-mail</span>
-            <input
+            <Input
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -79,7 +90,7 @@ export default function Home() {
           </label>
           <label>
             <span>Senha</span>
-            <input
+            <Input
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -88,7 +99,9 @@ export default function Home() {
             />
           </label>
           {error && <p className="error">{error}</p>}
-          <button>Entrar</button>
+          <Button type="submit" size="lg">
+            Entrar no painel <ArrowRight aria-hidden="true" />
+          </Button>
         </form>
       </section>
     </main>

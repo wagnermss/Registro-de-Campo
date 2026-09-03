@@ -1,7 +1,19 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { Trash2 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import { authenticatedFetch } from "./auth-client";
 import DocumentsPanel from "./documents-panel";
 
@@ -62,6 +74,11 @@ export default function Dashboard({ profile, onLogout }: DashboardProps) {
   const [to, setTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
+  const [pendingDelete, setPendingDelete] = useState<FieldRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -107,7 +124,7 @@ export default function Dashboard({ profile, onLogout }: DashboardProps) {
     };
     void load();
     return () => controller.abort();
-  }, [page, search, from, to]);
+  }, [page, search, from, to, reloadKey]);
 
   const applyFilters = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -115,6 +132,44 @@ export default function Dashboard({ profile, onLogout }: DashboardProps) {
     setSearch(draftSearch.trim());
     setFrom(draftFrom);
     setTo(draftTo);
+  };
+
+  const deleteRecord = async () => {
+    if (!pendingDelete || deleting) return;
+    setDeleting(true);
+    setDeleteError("");
+    setNotice("");
+    try {
+      const response = await authenticatedFetch(
+        `/records/${pendingDelete.id}`,
+        {
+          method: "DELETE",
+        },
+      );
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as {
+          message?: string | string[];
+        } | null;
+        const message = Array.isArray(body?.message)
+          ? body.message.join(" ")
+          : body?.message;
+        throw new Error(message || "Não foi possível excluir o registro.");
+      }
+      const deletedTitle = pendingDelete.title;
+      setPendingDelete(null);
+      setSelected(null);
+      setNotice(`O registro “${deletedTitle}” foi excluído.`);
+      if (data.items.length === 1 && page > 1) setPage((value) => value - 1);
+      else setReloadKey((value) => value + 1);
+    } catch (deleteError) {
+      setDeleteError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Não foi possível excluir o registro.",
+      );
+    } finally {
+      setDeleting(false);
+    }
   };
 
   if (profile.role !== "ADMIN") {
@@ -186,6 +241,12 @@ export default function Dashboard({ profile, onLogout }: DashboardProps) {
                 <i /> API conectada
               </span>
             </div>
+
+            {notice ? (
+              <p className="feedback success record-feedback" role="status">
+                {notice}
+              </p>
+            ) : null}
 
             <section className="metric-grid" aria-label="Resumo dos registros">
               <article className="metric-card metric-primary">
@@ -384,6 +445,17 @@ export default function Dashboard({ profile, onLogout }: DashboardProps) {
                           longitude={selected.longitude}
                           title={selected.title}
                         />
+                        <Button
+                          className="delete-record-button"
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => {
+                            setDeleteError("");
+                            setPendingDelete(selected);
+                          }}
+                        >
+                          <Trash2 aria-hidden="true" /> Excluir registro
+                        </Button>
                       </div>
                     </aside>
                   )}
@@ -393,6 +465,47 @@ export default function Dashboard({ profile, onLogout }: DashboardProps) {
           </>
         )}
       </main>
+
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleting) {
+            setPendingDelete(null);
+            setDeleteError("");
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir este registro?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O registro “{pendingDelete?.title}” deixará de aparecer no painel
+              e a exclusão será sincronizada com o dispositivo responsável. Esta
+              ação não poderá ser desfeita pelo painel.
+            </AlertDialogDescription>
+            {deleteError ? (
+              <p
+                className="text-sm font-semibold text-destructive"
+                role="alert"
+              >
+                {deleteError}
+              </p>
+            ) : null}
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={(event) => {
+                event.preventDefault();
+                void deleteRecord();
+              }}
+            >
+              {deleting ? "Excluindo…" : "Excluir registro"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
