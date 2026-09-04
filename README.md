@@ -368,7 +368,6 @@ O teste cria dados temporários e valida, entre outros pontos:
 
 Ao final, os registros, sessões e usuário temporários são removidos.
 
-
 ## O que melhoraria com mais tempo
 
 ### Prioridade alta
@@ -412,4 +411,6 @@ Ao final, os registros, sessões e usuário temporários são removidos.
 
 ## Documentação complementar
 
-Detalhes do protocolo, cache por usuário, endpoints de sincronização e documentos estão em [docs/architecture.md](docs/architecture.md).
+- [Arquitetura e decisões internas](docs/architecture.md)
+- [Referência funcional da API](docs/api.md)
+- [Plano de validação e roteiro de testes](docs/testing.md)
