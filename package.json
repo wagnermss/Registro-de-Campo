@@ -7,6 +7,7 @@
     "dev:api": "pnpm --filter @registro/api dev",
     "dev:web": "pnpm --filter @registro/web dev",
     "dev:mobile": "pnpm --filter @registro/mobile start",
+    "test:smoke": "pnpm --filter @registro/api test:smoke",
     "typecheck": "pnpm -r typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

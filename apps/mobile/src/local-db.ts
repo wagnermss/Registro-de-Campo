@@ -428,6 +428,32 @@ export async function markOperationSynced(
   });
 }
 
+export async function discardRejectedOperation(
+  userId: string,
+  operationId: string,
+  recordId: string,
+) {
+  const record = await db.getFirstAsync<{ photoUri: string | null }>(
+    `SELECT photo_uri as photoUri FROM field_records
+     WHERE id = ? AND owner_user_id = ?`,
+    recordId,
+    userId,
+  );
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      "DELETE FROM sync_queue WHERE operation_id = ? AND record_id = ?",
+      operationId,
+      recordId,
+    );
+    await db.runAsync(
+      "DELETE FROM field_records WHERE id = ? AND owner_user_id = ?",
+      recordId,
+      userId,
+    );
+  });
+  return record?.photoUri ?? null;
+}
+
 export async function markOperationConflict(
   userId: string,
   operationId: string,

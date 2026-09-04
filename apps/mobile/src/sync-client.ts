@@ -1,6 +1,8 @@
+import * as FileSystem from "expo-file-system";
 import { authenticatedFetch } from "./auth-session";
 import {
   applyServerChanges,
+  discardRejectedOperation,
   getSyncCursor,
   listPendingOperations,
   markOperationConflict,
@@ -28,6 +30,7 @@ async function uploadPhoto(photoUri: string) {
 export async function syncPendingRecords(userId: string) {
   const operations = await listPendingOperations(userId);
   let synced = 0;
+  let rejected = 0;
   for (const operation of operations) {
     try {
       let photoKey = operation.photoKey;
@@ -69,7 +72,7 @@ export async function syncPendingRecords(userId: string) {
           result.version,
         );
         synced += 1;
-      } else
+      } else if (result.status === "CONFLICT") {
         await markOperationConflict(
           userId,
           operation.operationId,
@@ -79,6 +82,23 @@ export async function syncPendingRecords(userId: string) {
             : `Servidor retornou ${result.status}`,
           result.serverRecord,
         );
+      } else if (result.status === "REJECTED") {
+        const discardedPhoto = await discardRejectedOperation(
+          userId,
+          operation.operationId,
+          operation.id,
+        );
+        if (discardedPhoto)
+          await FileSystem.deleteAsync(discardedPhoto, {
+            idempotent: true,
+          }).catch(() => undefined);
+        rejected += 1;
+      } else {
+        await markOperationFailed(
+          operation.operationId,
+          `Servidor retornou ${result.status ?? "um estado desconhecido"}`,
+        );
+      }
     } catch (error) {
       await markOperationFailed(
         operation.operationId,
@@ -93,5 +113,5 @@ export async function syncPendingRecords(userId: string) {
     const changes = await pulled.json();
     await applyServerChanges(userId, changes.records, changes.cursor);
   }
-  return { total: operations.length, synced };
+  return { total: operations.length, synced, rejected };
 }

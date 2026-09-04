@@ -27,6 +27,7 @@ Atualizações usam versionamento otimista: o servidor aceita uma operação ape
 - Edições sincronizadas geram operações `UPDATE`; exclusões geram `DELETE` com exclusão lógica no servidor.
 - Alterações sucessivas no mesmo registro são consolidadas em uma única operação pendente.
 - Conflitos armazenam no SQLite a cópia retornada pelo servidor para comparação offline.
+- Operações `REJECTED` são terminais e removem do cache o registro local inválido; somente respostas `CONFLICT` entram no fluxo de decisão do usuário.
 - Ao manter a versão local, o app cria uma nova operação idempotente baseada na versão atual do servidor.
 - O retorno da conectividade dispara upload, push e pull sem bloquear o uso offline.
 

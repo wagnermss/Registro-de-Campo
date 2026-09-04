@@ -102,10 +102,13 @@ export default function HomeScreen() {
       setRecords(await listLocalRecords(userId));
       setDocuments(await listLocalDocuments());
       setConflicts(await listLocalConflicts(userId));
+      const rejectedMessage = result.rejected
+        ? ` · ${result.rejected} operação(ões) inválida(s) removida(s)`
+        : "";
       setSyncMessage(
         result.total === 0
           ? `Tudo sincronizado · ${documentCount} documento(s)`
-          : `${result.synced} de ${result.total} registro(s) · ${documentCount} documento(s)`,
+          : `${result.synced} de ${result.total} registro(s)${rejectedMessage} · ${documentCount} documento(s)`,
       );
     } catch (syncError) {
       const sessionStillExists = await SecureStore.getItemAsync(
@@ -442,7 +445,7 @@ export default function HomeScreen() {
 
         {view === "records" ? (
           <>
-            <Text style={styles.text}>Novo registro offline</Text>
+            <Text style={styles.text}>Novo Registro</Text>
             {conflicts.length > 0 ? (
               <View style={styles.conflictSummary}>
                 <Text style={styles.conflictSummaryTitle}>
@@ -495,7 +498,7 @@ export default function HomeScreen() {
               title="Salvar no dispositivo"
               onPress={() => void saveRecord()}
             />
-            <Text style={styles.subtitle}>Registros locais</Text>
+            <Text style={styles.subtitle}>Registros Locais</Text>
             {records.map((record) => (
               <View style={styles.record} key={record.id}>
                 <Text style={styles.recordTitle}>{record.title}</Text>
