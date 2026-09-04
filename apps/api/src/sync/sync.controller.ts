@@ -10,6 +10,7 @@ import {
 import { Request } from "express";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { JwtPayload } from "../auth/jwt.strategy";
+import { PullDto } from "./dto/pull.dto";
 import { PushDto } from "./dto/push.dto";
 import { SyncService } from "./sync.service";
 
@@ -27,8 +28,8 @@ export class SyncController {
   }
   @Get("pull") pull(
     @Req() request: AuthenticatedRequest,
-    @Query("cursor") cursor?: string,
+    @Query() query: PullDto,
   ) {
-    return this.sync.pull(request.user.sub, cursor);
+    return this.sync.pull(request.user.sub, query.cursor);
   }
 }

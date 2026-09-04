@@ -8,10 +8,12 @@ import {
 
 export class LoginDto {
   @IsEmail()
+  @MaxLength(200)
   email!: string;
 
   @IsString()
   @MinLength(8)
+  @MaxLength(72)
   password!: string;
 
   @IsOptional()

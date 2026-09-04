@@ -9,7 +9,10 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
+  MaxLength,
   Min,
+  MinLength,
   ValidateNested,
 } from "class-validator";
 
@@ -21,12 +24,12 @@ export enum SyncOperationType {
 
 export class SyncRecordPayloadDto {
   @IsUUID() id!: string;
-  @IsString() title!: string;
-  @IsOptional() @IsString() description?: string | null;
-  @IsNumber() latitude!: number;
-  @IsNumber() longitude!: number;
+  @IsString() @MinLength(1) @MaxLength(160) title!: string;
+  @IsOptional() @IsString() @MaxLength(4000) description?: string | null;
+  @IsNumber() @Min(-90) @Max(90) latitude!: number;
+  @IsNumber() @Min(-180) @Max(180) longitude!: number;
   @IsDateString() capturedAt!: string;
-  @IsOptional() @IsString() photoKey?: string | null;
+  @IsOptional() @IsString() @MaxLength(500) photoKey?: string | null;
 }
 
 export class SyncOperationDto {

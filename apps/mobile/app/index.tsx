@@ -49,11 +49,18 @@ import { syncPendingRecords } from "../src/sync-client";
 
 type Profile = { id: string; name: string; email: string; role: string };
 
+const recordStatusLabels: Record<LocalRecord["syncStatus"], string> = {
+  PENDING: "Pendente",
+  SYNCED: "Sincronizado",
+  CONFLICT: "Conflito",
+};
+
 export default function HomeScreen() {
   const [email, setEmail] = useState("admin@registro.local");
   const [password, setPassword] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loggingIn, setLoggingIn] = useState(false);
   const [error, setError] = useState("");
   const [records, setRecords] = useState<LocalRecord[]>([]);
   const [documents, setDocuments] = useState<LocalDocument[]>([]);
@@ -165,21 +172,31 @@ export default function HomeScreen() {
     }
   }
   async function login() {
+    if (loggingIn) return;
     setError("");
+    setLoggingIn(true);
     try {
       const r = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, deviceName: "mobile" }),
       });
-      if (!r.ok) throw new Error();
+      if (!r.ok) throw new Error("E-mail ou senha inválidos.");
       const s = await r.json();
       await saveSession(s);
       await prepareLocalDataForUser(s.user.id);
       await loadUserLocalData(s.user.id);
       setProfile(s.user);
-    } catch {
-      setError("E-mail ou senha inválidos.");
+    } catch (loginError) {
+      setError(
+        loginError instanceof TypeError
+          ? "Não foi possível conectar à API."
+          : loginError instanceof Error
+            ? loginError.message
+            : "Não foi possível entrar.",
+      );
+    } finally {
+      setLoggingIn(false);
     }
   }
   async function logout() {
@@ -401,8 +418,12 @@ export default function HomeScreen() {
   }
   if (loading)
     return (
-      <View style={styles.container}>
-        <ActivityIndicator />
+      <View style={styles.loadingContainer}>
+        <View style={styles.loadingBrand}>
+          <Text style={styles.loadingBrandText}>RC</Text>
+        </View>
+        <ActivityIndicator color="#285d39" />
+        <Text style={styles.loadingText}>Preparando seus dados offline…</Text>
       </View>
     );
   if (cameraVisible)
@@ -499,6 +520,15 @@ export default function HomeScreen() {
               onPress={() => void saveRecord()}
             />
             <Text style={styles.subtitle}>Registros Locais</Text>
+            {records.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyTitle}>Nenhum registro local</Text>
+                <Text style={styles.muted}>
+                  Capture uma foto e uma localização para criar o primeiro
+                  registro, mesmo sem conexão.
+                </Text>
+              </View>
+            ) : null}
             {records.map((record) => (
               <View style={styles.record} key={record.id}>
                 <Text style={styles.recordTitle}>{record.title}</Text>
@@ -507,10 +537,34 @@ export default function HomeScreen() {
                     {record.description}
                   </Text>
                 ) : null}
-                <Text style={styles.muted}>
-                  {record.syncStatus} ·{" "}
-                  {new Date(record.capturedAt).toLocaleString()}
-                </Text>
+                <View style={styles.recordMeta}>
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      record.syncStatus === "SYNCED"
+                        ? styles.statusSynced
+                        : record.syncStatus === "CONFLICT"
+                          ? styles.statusConflict
+                          : styles.statusPending,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.statusText,
+                        record.syncStatus === "SYNCED"
+                          ? styles.statusSyncedText
+                          : record.syncStatus === "CONFLICT"
+                            ? styles.statusConflictText
+                            : styles.statusPendingText,
+                      ]}
+                    >
+                      {recordStatusLabels[record.syncStatus]}
+                    </Text>
+                  </View>
+                  <Text style={styles.muted}>
+                    {new Date(record.capturedAt).toLocaleString()}
+                  </Text>
+                </View>
                 <View style={styles.recordActions}>
                   {record.syncStatus === "CONFLICT" ? (
                     <Button
@@ -721,13 +775,21 @@ export default function HomeScreen() {
             })}
           </>
         )}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? (
+          <View style={styles.errorCard}>
+            <Text style={styles.error}>{error}</Text>
+          </View>
+        ) : null}
         <Button
           title={syncing ? "Sincronizando…" : "Sincronizar agora"}
           disabled={syncing}
           onPress={() => void syncNow(profile.id)}
         />
-        {syncMessage ? <Text style={styles.muted}>{syncMessage}</Text> : null}
+        {syncMessage ? (
+          <View style={styles.syncFeedback}>
+            <Text style={styles.syncFeedbackText}>{syncMessage}</Text>
+          </View>
+        ) : null}
         <Button title="Sair" onPress={() => void logout()} />
       </ScrollView>
     );
@@ -738,6 +800,7 @@ export default function HomeScreen() {
         style={styles.input}
         value={email}
         onChangeText={setEmail}
+        editable={!loggingIn}
         autoCapitalize="none"
         keyboardType="email-address"
         placeholder="E-mail"
@@ -746,13 +809,18 @@ export default function HomeScreen() {
         style={styles.input}
         value={password}
         onChangeText={setPassword}
+        editable={!loggingIn}
         secureTextEntry
         placeholder="Senha"
       />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? (
+        <View style={styles.errorCard}>
+          <Text style={styles.error}>{error}</Text>
+        </View>
+      ) : null}
       <Button
-        title="Entrar"
-        disabled={!password}
+        title={loggingIn ? "Entrando…" : "Entrar"}
+        disabled={!email.trim() || !password || loggingIn}
         onPress={() => void login()}
       />
     </View>
@@ -761,6 +829,24 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: "center", padding: 24, gap: 12 },
+  loadingContainer: {
+    alignItems: "center",
+    backgroundColor: "#f3f5f2",
+    flex: 1,
+    gap: 14,
+    justifyContent: "center",
+    padding: 24,
+  },
+  loadingBrand: {
+    alignItems: "center",
+    backgroundColor: "#193126",
+    borderRadius: 12,
+    height: 48,
+    justifyContent: "center",
+    width: 48,
+  },
+  loadingBrandText: { color: "white", fontSize: 15, fontWeight: "800" },
+  loadingText: { color: "#496052", fontSize: 13, fontWeight: "600" },
   contentContainer: {
     flexGrow: 1,
     gap: 12,
@@ -778,11 +864,32 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   multilineInput: { minHeight: 82 },
-  error: { color: "#a21d22" },
+  error: { color: "#8f2025", fontSize: 13, lineHeight: 18 },
+  errorCard: {
+    backgroundColor: "#fbe9e8",
+    borderColor: "#efcac7",
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 11,
+  },
   subtitle: { fontSize: 20, fontWeight: "700", marginTop: 18 },
   record: { backgroundColor: "#edf3ed", borderRadius: 8, padding: 12, gap: 7 },
   recordTitle: { color: "#193126", fontSize: 16, fontWeight: "700" },
   recordDescription: { color: "#496052", lineHeight: 20 },
+  recordMeta: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  statusBadge: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
+  statusText: { fontSize: 10, fontWeight: "800" },
+  statusSynced: { backgroundColor: "#dff2e8" },
+  statusSyncedText: { color: "#17623e" },
+  statusPending: { backgroundColor: "#fff3d8" },
+  statusPendingText: { color: "#754b00" },
+  statusConflict: { backgroundColor: "#fbe9e8" },
+  statusConflictText: { color: "#8f2025" },
   recordActions: { flexDirection: "row", gap: 8, marginTop: 5 },
   conflictSummary: {
     backgroundColor: "#fff3d8",
@@ -805,7 +912,19 @@ const styles = StyleSheet.create({
   activeTab: { backgroundColor: "#285d39" },
   tabText: { color: "#496052", fontWeight: "600" },
   activeTabText: { color: "white", fontWeight: "700" },
-  emptyCard: { backgroundColor: "#f1f4f1", borderRadius: 8, padding: 18 },
+  emptyCard: {
+    backgroundColor: "#f1f4f1",
+    borderRadius: 8,
+    gap: 5,
+    padding: 18,
+  },
+  emptyTitle: { color: "#193126", fontSize: 14, fontWeight: "700" },
+  syncFeedback: {
+    backgroundColor: "#e8f0eb",
+    borderRadius: 8,
+    padding: 11,
+  },
+  syncFeedbackText: { color: "#285d39", fontSize: 12, lineHeight: 17 },
   documentCard: {
     backgroundColor: "#edf3ed",
     borderRadius: 10,

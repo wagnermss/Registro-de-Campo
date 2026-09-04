@@ -115,6 +115,39 @@ button {
   min-height: 100vh;
   padding: 2rem;
 }
+.session-loading {
+  align-items: center;
+  background: var(--green-dark);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  justify-content: center;
+  min-height: 100vh;
+}
+.session-loading .brand-mark {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.session-loading p {
+  color: #c8d8ce;
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin: 0;
+}
+.session-spinner {
+  animation: session-spin 0.8s linear infinite;
+  border: 2px solid rgba(255, 255, 255, 0.24);
+  border-radius: 50%;
+  border-top-color: #fff;
+  height: 1.4rem;
+  width: 1.4rem;
+}
+@keyframes session-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .login-shell {
   background:
     linear-gradient(115deg, rgba(17, 55, 39, 0.95), rgba(26, 75, 53, 0.82)),

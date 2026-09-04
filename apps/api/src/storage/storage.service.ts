@@ -38,11 +38,7 @@ export class StorageService implements OnModuleInit {
   }
 
   async uploadRecordPhoto(userId: string, file: Express.Multer.File) {
-    const extension =
-      file.originalname
-        .split(".")
-        .pop()
-        ?.replace(/[^a-zA-Z0-9]/g, "") || "jpg";
+    const extension = file.mimetype === "image/png" ? "png" : "jpg";
     const key = `records/${userId}/${randomUUID()}.${extension}`;
     await this.client.send(
       new PutObjectCommand({
@@ -53,6 +49,10 @@ export class StorageService implements OnModuleInit {
       }),
     );
     return key;
+  }
+
+  isRecordPhotoOwnedBy(userId: string, key: string) {
+    return key.startsWith(`records/${userId}/`);
   }
 
   photoUrl(key: string) {

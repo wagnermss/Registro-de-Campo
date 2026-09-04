@@ -1,11 +1,15 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma, SyncOperationStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { StorageService } from "../storage/storage.service";
 import { SyncOperationDto, SyncOperationType } from "./dto/push.dto";
 
 @Injectable()
 export class SyncService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
 
   async push(userId: string, operations: SyncOperationDto[]) {
     const results = [];
@@ -16,6 +20,16 @@ export class SyncService {
 
   private async apply(userId: string, operation: SyncOperationDto) {
     if (operation.payload.id !== operation.recordId) {
+      return {
+        operationId: operation.operationId,
+        recordId: operation.recordId,
+        status: SyncOperationStatus.REJECTED,
+      };
+    }
+    if (
+      operation.payload.photoKey &&
+      !this.storage.isRecordPhotoOwnedBy(userId, operation.payload.photoKey)
+    ) {
       return {
         operationId: operation.operationId,
         recordId: operation.recordId,

@@ -9,7 +9,8 @@
     "test:smoke": "sh -c 'set -a; . ../../.env; set +a; tsx scripts/smoke-test.ts'",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "sh -c 'set -a; . ../../.env; set +a; prisma generate'",
-    "prisma:migrate": "sh -c 'set -a; . ../../.env; set +a; prisma migrate dev'",
+    "prisma:migrate": "sh -c 'set -a; . ../../.env; set +a; prisma migrate dev \"$@\"' --",
+    "prisma:studio": "sh -c 'set -a; . ../../.env; set +a; prisma studio'",
     "prisma:seed": "sh -c 'set -a; . ../../.env; set +a; tsx prisma/seed.ts'"
   },
   "dependencies": {

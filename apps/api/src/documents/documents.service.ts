@@ -22,6 +22,39 @@ const allowedMimeTypes = new Set([
   "image/png",
 ]);
 
+const zipMimeTypes = new Set([
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+]);
+const legacyOfficeMimeTypes = new Set([
+  "application/msword",
+  "application/vnd.ms-excel",
+  "application/vnd.ms-powerpoint",
+]);
+
+function startsWith(file: Express.Multer.File, signature: string) {
+  const expected = Buffer.from(signature, "hex");
+  return (
+    file.buffer.length >= expected.length &&
+    file.buffer.subarray(0, expected.length).equals(expected)
+  );
+}
+
+function hasValidDocumentSignature(file: Express.Multer.File) {
+  if (file.mimetype === "application/pdf")
+    return file.buffer.subarray(0, 5).toString("ascii") === "%PDF-";
+  if (file.mimetype === "image/jpeg") return startsWith(file, "ffd8ff");
+  if (file.mimetype === "image/png")
+    return startsWith(file, "89504e470d0a1a0a");
+  if (zipMimeTypes.has(file.mimetype)) return startsWith(file, "504b0304");
+  if (legacyOfficeMimeTypes.has(file.mimetype))
+    return startsWith(file, "d0cf11e0a1b11ae1");
+  if (file.mimetype === "text/plain" || file.mimetype === "text/csv")
+    return !file.buffer.includes(0);
+  return false;
+}
+
 @Injectable()
 export class DocumentsService {
   constructor(
@@ -140,6 +173,10 @@ export class DocumentsService {
     if (!file) throw new BadRequestException("Selecione um documento");
     if (!allowedMimeTypes.has(file.mimetype))
       throw new BadRequestException("Tipo de documento não permitido");
+    if (!hasValidDocumentSignature(file))
+      throw new BadRequestException(
+        "O conteúdo do arquivo não corresponde ao tipo informado",
+      );
   }
 
   private checksum(buffer: Buffer) {

@@ -19,31 +19,56 @@ export default function Home() {
   const [password, setPassword] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState("");
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [loggingIn, setLoggingIn] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    if (token) void getProfile(token);
+    const restoreSession = async () => {
+      const token = localStorage.getItem("accessToken");
+      if (!token) {
+        setCheckingSession(false);
+        return;
+      }
+      try {
+        const response = await authenticatedFetch("/auth/me");
+        if (response.ok) setProfile(await response.json());
+        else {
+          if (response.status === 401) clearTokens();
+          setError("Sua sessão expirou. Entre novamente.");
+        }
+      } catch {
+        setError("Não foi possível validar a sessão. Verifique a API.");
+      } finally {
+        setCheckingSession(false);
+      }
+    };
+    void restoreSession();
   }, []);
-  async function getProfile(token: string) {
-    const response = await authenticatedFetch("/auth/me");
-    if (response.ok) setProfile(await response.json());
-  }
+
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (loggingIn) return;
     setError("");
-    const response = await fetch(`${API_URL}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, deviceName: "web" }),
-    });
-    if (!response.ok) {
-      setError("E-mail ou senha inválidos.");
-      return;
+    setLoggingIn(true);
+    try {
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, deviceName: "web" }),
+      });
+      if (!response.ok) {
+        setError("E-mail ou senha inválidos.");
+        return;
+      }
+      const session = await response.json();
+      saveTokens(session);
+      setProfile(session.user);
+      setPassword("");
+    } catch {
+      setError("Não foi possível conectar à API.");
+    } finally {
+      setLoggingIn(false);
     }
-    const session = await response.json();
-    saveTokens(session);
-    setProfile(session.user);
-    setPassword("");
   }
   async function logout() {
     await authenticatedFetch("/auth/logout", { method: "POST" }).catch(
@@ -52,6 +77,17 @@ export default function Home() {
     clearTokens();
     setProfile(null);
   }
+
+  if (checkingSession)
+    return (
+      <main className="session-loading" aria-busy="true" aria-live="polite">
+        <span className="brand-mark" aria-label="Registro de Campo">
+          <MapPinned size={19} aria-hidden="true" />
+        </span>
+        <span className="session-spinner" aria-hidden="true" />
+        <p>Verificando sessão…</p>
+      </main>
+    );
 
   if (profile) return <Dashboard profile={profile} onLogout={logout} />;
   return (
@@ -85,6 +121,7 @@ export default function Home() {
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
+              disabled={loggingIn}
               required
             />
           </label>
@@ -94,13 +131,19 @@ export default function Home() {
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
+              disabled={loggingIn}
               required
               minLength={8}
             />
           </label>
-          {error && <p className="error">{error}</p>}
-          <Button type="submit" size="lg">
-            Entrar no painel <ArrowRight aria-hidden="true" />
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+          <Button type="submit" size="lg" disabled={loggingIn}>
+            {loggingIn ? "Entrando…" : "Entrar no painel"}{" "}
+            {!loggingIn && <ArrowRight aria-hidden="true" />}
           </Button>
         </form>
       </section>

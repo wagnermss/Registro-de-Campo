@@ -112,6 +112,55 @@ async function main() {
     201,
   );
 
+  await json(
+    await request("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({
+        email: testEmail,
+        password: testPassword,
+        unexpectedProperty: true,
+      }),
+    }),
+    400,
+  );
+  await json(
+    await request("/sync/pull?cursor=invalid-date", {}, field.accessToken),
+    400,
+  );
+
+  const disallowedOriginResponse = await request("/health", {
+    headers: { Origin: "https://malicious.invalid" },
+  });
+  assert(
+    disallowedOriginResponse.headers.get("access-control-allow-origin") ===
+      null,
+    "A API liberou CORS para uma origem não autorizada",
+  );
+  const allowedOrigin = `http://localhost:${process.env.WEB_PORT ?? 3000}`;
+  const allowedOriginResponse = await request("/health", {
+    headers: { Origin: allowedOrigin },
+  });
+  assert(
+    allowedOriginResponse.headers.get("access-control-allow-origin") ===
+      allowedOrigin,
+    "A API não liberou CORS para o cliente web local",
+  );
+
+  const fakePhoto = new FormData();
+  fakePhoto.append(
+    "file",
+    new Blob(["not-an-image"], { type: "image/jpeg" }),
+    "fake.jpg",
+  );
+  await json(
+    await request(
+      "/uploads/photos",
+      { method: "POST", body: fakePhoto },
+      field.accessToken,
+    ),
+    400,
+  );
+
   await json(await request("/records", {}, field.accessToken), 403);
   await json(await request("/documents", {}, field.accessToken), 200);
 
@@ -127,6 +176,40 @@ async function main() {
     fieldOperationId,
     recordIds[1],
     `${titlePrefix} campo`,
+  );
+
+  const invalidCoordinates = createOperation(
+    randomUUID(),
+    randomUUID(),
+    `${titlePrefix} coordenadas inválidas`,
+  );
+  invalidCoordinates.operations[0].payload.latitude = 91;
+  await json(
+    await request(
+      "/sync/push",
+      { method: "POST", body: JSON.stringify(invalidCoordinates) },
+      field.accessToken,
+    ),
+    400,
+  );
+
+  const foreignPhoto = createOperation(
+    randomUUID(),
+    randomUUID(),
+    `${titlePrefix} foto alheia`,
+  );
+  foreignPhoto.operations[0].payload.photoKey = `records/${admin.user.id}/${randomUUID()}.jpg`;
+  const foreignPhotoPush = await json<{ results: { status: string }[] }>(
+    await request(
+      "/sync/push",
+      { method: "POST", body: JSON.stringify(foreignPhoto) },
+      field.accessToken,
+    ),
+    201,
+  );
+  assert(
+    foreignPhotoPush.results[0]?.status === "REJECTED",
+    "Um usuário conseguiu associar ao registro a foto de outra conta",
   );
 
   const adminPush = await json<{ results: { status: string }[] }>(
