@@ -7,6 +7,7 @@ import { PrismaModule } from "./prisma/prisma.module";
 import { RecordsModule } from "./records/records.module";
 import { StorageModule } from "./storage/storage.module";
 import { SyncModule } from "./sync/sync.module";
+import { UsersModule } from "./users/users.module";
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { SyncModule } from "./sync/sync.module";
     SyncModule,
     RecordsModule,
     DocumentsModule,
+    UsersModule,
   ],
   controllers: [HealthController],
 })

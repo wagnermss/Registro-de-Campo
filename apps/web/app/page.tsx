@@ -12,7 +12,7 @@ import {
 } from "./auth-client";
 import Dashboard from "./dashboard";
 
-type Profile = { name: string; email: string; role: string };
+type Profile = { id: string; name: string; email: string; role: string };
 
 export default function Home() {
   const [email, setEmail] = useState("admin@registro.local");

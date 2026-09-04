@@ -2,7 +2,7 @@
 
 Plataforma offline-first para coleta de registros em campo com fotografia e geolocalização. O sistema é composto por um aplicativo mobile, uma API compartilhada e um painel web para consulta dos registros e gestão de documentos.
 
-O aplicativo mobile mantém os dados no próprio dispositivo, permitindo consultar e criar registros sem conexão. Quando a conectividade é restabelecida, os itens pendentes poderão ser sincronizados com o servidor sem interromper o trabalho em campo.
+O aplicativo mobile mantém os dados no próprio dispositivo, permitindo consultar e criar registros sem conexão. Quando a conectividade é restabelecida, os itens pendentes poderão ser sincronizados com o servidor sem interromper o trabalho em campo. Os registros locais são particionados pelo identificador do usuário autenticado; trocar de conta no mesmo dispositivo não expõe o cache, as pendências ou os conflitos de outra pessoa.
 
 ## Funcionalidades
 
@@ -14,6 +14,7 @@ O aplicativo mobile mantém os dados no próprio dispositivo, permitindo consult
 - Edição e exclusão lógica de registros offline.
 - Captura de fotografia e geolocalização.
 - Fila persistente de registros pendentes de sincronização.
+- Isolamento do cache, da fila e do cursor de sincronização por usuário.
 - Sincronização automática ao recuperar conectividade e acionamento manual.
 - Abertura offline com restauração da sessão local.
 - Catálogo, download e visualização offline de documentos.
@@ -24,6 +25,7 @@ O aplicativo mobile mantém os dados no próprio dispositivo, permitindo consult
 - Autenticação integrada à mesma API do mobile.
 - Controle de acesso baseado no perfil do usuário.
 - Dashboard administrativo com indicadores, filtros, fotografias, mapa e exclusão lógica de registros.
+- Gestão de usuários com criação, edição, bloqueio, reativação e redefinição de senha.
 - Publicação, download, substituição e ativação de documentos.
 
 ### Backend
@@ -31,6 +33,7 @@ O aplicativo mobile mantém os dados no próprio dispositivo, permitindo consult
 - API REST desenvolvida com NestJS.
 - Autenticação por access token e refresh token JWT.
 - Senhas armazenadas por meio de hash com bcryptjs.
+- Papéis administrativos e de campo, bloqueio imediato e revogação de sessões.
 - Validação de dados recebidos pela API.
 - Persistência central em PostgreSQL com Prisma ORM.
 - Modelos para usuários, registros de campo, documentos e operações de sincronização.

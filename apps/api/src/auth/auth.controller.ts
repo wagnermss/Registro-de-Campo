@@ -1,6 +1,15 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import { Request } from "express";
 import { AuthService } from "./auth.service";
+import { ChangePasswordDto } from "./dto/change-password.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
 import { JwtAuthGuard } from "./jwt-auth.guard";
@@ -32,5 +41,18 @@ export class AuthController {
   @Post("logout")
   logout(@Req() request: AuthenticatedRequest) {
     return this.auth.logout(request.user.sub, request.user.sessionId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch("password")
+  changePassword(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: ChangePasswordDto,
+  ) {
+    return this.auth.changePassword(
+      request.user.sub,
+      body.currentPassword,
+      body.newPassword,
+    );
   }
 }

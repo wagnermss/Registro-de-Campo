@@ -42,11 +42,12 @@ import {
   LocalConflict,
   LocalRecord,
   keepLocalConflict,
+  prepareLocalDataForUser,
   updateLocalRecord,
 } from "../src/local-db";
 import { syncPendingRecords } from "../src/sync-client";
 
-type Profile = { name: string; email: string; role: string };
+type Profile = { id: string; name: string; email: string; role: string };
 
 export default function HomeScreen() {
   const [email, setEmail] = useState("admin@registro.local");
@@ -82,31 +83,44 @@ export default function HomeScreen() {
     if (!profile) return;
     return NetInfo.addEventListener((state) => {
       if (state.isConnected && state.isInternetReachable !== false)
-        void syncNow();
+        void syncNow(profile.id);
     });
   }, [profile]);
 
-  async function syncNow() {
+  async function loadUserLocalData(userId: string) {
+    setRecords(await listLocalRecords(userId));
+    setConflicts(await listLocalConflicts(userId));
+  }
+
+  async function syncNow(userId: string) {
     if (syncingRef.current) return;
     syncingRef.current = true;
     setSyncing(true);
     try {
-      const result = await syncPendingRecords();
+      const result = await syncPendingRecords(userId);
       const documentCount = await syncDocumentCatalog();
-      setRecords(await listLocalRecords());
+      setRecords(await listLocalRecords(userId));
       setDocuments(await listLocalDocuments());
-      setConflicts(await listLocalConflicts());
+      setConflicts(await listLocalConflicts(userId));
       setSyncMessage(
         result.total === 0
           ? `Tudo sincronizado · ${documentCount} documento(s)`
           : `${result.synced} de ${result.total} registro(s) · ${documentCount} documento(s)`,
       );
     } catch (syncError) {
-      setSyncMessage(
-        syncError instanceof Error
-          ? `${syncError.message}. Os dados locais continuam disponíveis.`
-          : "Sem conexão. Os dados locais continuam disponíveis.",
+      const sessionStillExists = await SecureStore.getItemAsync(
+        sessionKeys.access,
       );
+      if (!sessionStillExists) {
+        setProfile(null);
+        setError("Sua sessão foi encerrada. Entre novamente para sincronizar.");
+        setSyncMessage("");
+      } else
+        setSyncMessage(
+          syncError instanceof Error
+            ? `${syncError.message}. Os dados locais continuam disponíveis.`
+            : "Sem conexão. Os dados locais continuam disponíveis.",
+        );
     } finally {
       syncingRef.current = false;
       setSyncing(false);
@@ -115,20 +129,29 @@ export default function HomeScreen() {
   async function restore() {
     try {
       await initializeLocalDatabase();
-      setRecords(await listLocalRecords());
       setDocuments(await listLocalDocuments());
-      setConflicts(await listLocalConflicts());
       const savedProfile = await SecureStore.getItemAsync(sessionKeys.profile);
-      if (savedProfile) setProfile(JSON.parse(savedProfile));
+      if (savedProfile) {
+        const user = JSON.parse(savedProfile) as Profile;
+        await prepareLocalDataForUser(user.id, true);
+        await loadUserLocalData(user.id);
+        setProfile(user);
+      }
       void authenticatedFetch("/auth/me")
         .then(async (r) => {
           if (r.ok) {
-            const user = await r.json();
+            const user = (await r.json()) as Profile;
+            await prepareLocalDataForUser(user.id);
+            await loadUserLocalData(user.id);
             setProfile(user);
             await SecureStore.setItemAsync(
               sessionKeys.profile,
               JSON.stringify(user),
             );
+          } else if (r.status === 401) {
+            setProfile(null);
+            setRecords([]);
+            setConflicts([]);
           }
         })
         .catch(() => undefined);
@@ -149,6 +172,8 @@ export default function HomeScreen() {
       if (!r.ok) throw new Error();
       const s = await r.json();
       await saveSession(s);
+      await prepareLocalDataForUser(s.user.id);
+      await loadUserLocalData(s.user.id);
       setProfile(s.user);
     } catch {
       setError("E-mail ou senha inválidos.");
@@ -160,6 +185,11 @@ export default function HomeScreen() {
     );
     await clearSession();
     setProfile(null);
+    setRecords([]);
+    setConflicts([]);
+    setSelectedConflict(null);
+    setEditingRecord(null);
+    setSyncMessage("");
   }
   async function captureLocation() {
     const permission = await Location.requestForegroundPermissionsAsync();
@@ -172,6 +202,7 @@ export default function HomeScreen() {
     setLongitude(position.coords.longitude);
   }
   async function saveRecord() {
+    if (!profile) return;
     if (!title.trim()) {
       setError("Informe um título para o registro.");
       return;
@@ -190,15 +221,15 @@ export default function HomeScreen() {
         photoUri,
         capturedAt: new Date().toISOString(),
       };
-      await createLocalRecord(record);
-      setRecords(await listLocalRecords());
+      await createLocalRecord(record, profile.id);
+      setRecords(await listLocalRecords(profile.id));
       setTitle("");
       setDescription("");
       setLatitude(null);
       setLongitude(null);
       setPhotoUri(null);
       setError("");
-      void syncNow();
+      void syncNow(profile.id);
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -233,20 +264,21 @@ export default function HomeScreen() {
     setError("");
   }
   async function saveEdit() {
-    if (!editingRecord || !editTitle.trim()) {
+    if (!profile || !editingRecord || !editTitle.trim()) {
       setError("Informe um título para o registro.");
       return;
     }
     try {
       await updateLocalRecord(
+        profile.id,
         editingRecord.id,
         editTitle.trim(),
         editDescription.trim() || null,
       );
-      setRecords(await listLocalRecords());
+      setRecords(await listLocalRecords(profile.id));
       setEditingRecord(null);
       setError("");
-      void syncNow();
+      void syncNow(profile.id);
     } catch (editError) {
       setError(
         editError instanceof Error
@@ -274,15 +306,16 @@ export default function HomeScreen() {
     );
   }
   async function confirmDelete(record: LocalRecord) {
+    if (!profile) return;
     try {
-      const unusedPhotoUri = await deleteLocalRecord(record.id);
+      const unusedPhotoUri = await deleteLocalRecord(profile.id, record.id);
       if (unusedPhotoUri)
         await FileSystem.deleteAsync(unusedPhotoUri, {
           idempotent: true,
         }).catch(() => undefined);
-      setRecords(await listLocalRecords());
+      setRecords(await listLocalRecords(profile.id));
       setError("");
-      void syncNow();
+      void syncNow(profile.id);
     } catch (deleteError) {
       setError(
         deleteError instanceof Error
@@ -292,15 +325,18 @@ export default function HomeScreen() {
     }
   }
   async function useServerVersion() {
-    if (!selectedConflict) return;
+    if (!profile || !selectedConflict) return;
     try {
-      const discardedPhoto = await acceptServerConflict(selectedConflict);
+      const discardedPhoto = await acceptServerConflict(
+        profile.id,
+        selectedConflict,
+      );
       if (discardedPhoto)
         await FileSystem.deleteAsync(discardedPhoto, {
           idempotent: true,
         }).catch(() => undefined);
-      setRecords(await listLocalRecords());
-      setConflicts(await listLocalConflicts());
+      setRecords(await listLocalRecords(profile.id));
+      setConflicts(await listLocalConflicts(profile.id));
       setSelectedConflict(null);
       setError("");
       setSyncMessage("A versão do servidor foi aplicada.");
@@ -313,15 +349,15 @@ export default function HomeScreen() {
     }
   }
   async function useLocalVersion() {
-    if (!selectedConflict) return;
+    if (!profile || !selectedConflict) return;
     try {
-      await keepLocalConflict(selectedConflict);
-      setRecords(await listLocalRecords());
-      setConflicts(await listLocalConflicts());
+      await keepLocalConflict(profile.id, selectedConflict);
+      setRecords(await listLocalRecords(profile.id));
+      setConflicts(await listLocalConflicts(profile.id));
       setSelectedConflict(null);
       setError("");
       setSyncMessage("Alteração local pronta para uma nova sincronização.");
-      void syncNow();
+      void syncNow(profile.id);
     } catch (conflictError) {
       setError(
         conflictError instanceof Error
@@ -686,7 +722,7 @@ export default function HomeScreen() {
         <Button
           title={syncing ? "Sincronizando…" : "Sincronizar agora"}
           disabled={syncing}
-          onPress={() => void syncNow()}
+          onPress={() => void syncNow(profile.id)}
         />
         {syncMessage ? <Text style={styles.muted}>{syncMessage}</Text> : null}
         <Button title="Sair" onPress={() => void logout()} />

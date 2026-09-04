@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { User } from "@prisma/client";
@@ -18,7 +22,11 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { email: email.toLowerCase() },
     });
-    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+    if (
+      !user ||
+      !user.isActive ||
+      !(await bcrypt.compare(password, user.passwordHash))
+    ) {
       throw new UnauthorizedException("E-mail ou senha inválidos");
     }
     const session = await this.prisma.authSession.create({
@@ -49,6 +57,7 @@ export class AuthService {
       });
       if (
         !session ||
+        !session.user.isActive ||
         !(await bcrypt.compare(refreshToken, session.refreshTokenHash))
       ) {
         throw new UnauthorizedException();
@@ -72,6 +81,32 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
     return { success: true };
+  }
+
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !(await bcrypt.compare(currentPassword, user.passwordHash)))
+      throw new UnauthorizedException("Senha atual inválida");
+    if (await bcrypt.compare(newPassword, user.passwordHash))
+      throw new BadRequestException(
+        "A nova senha deve ser diferente da senha atual",
+      );
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { passwordHash: await bcrypt.hash(newPassword, 12) },
+      }),
+      this.prisma.authSession.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+    return { success: true, requiresLogin: true };
   }
 
   private async issueTokens(user: User, sessionId: string) {

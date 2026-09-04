@@ -21,11 +21,18 @@ Atualizações usam versionamento otimista: o servidor aceita uma operação ape
 - `POST /api/sync/push` recebe operações em lote, usa `operationId` para idempotência e valida `baseVersion`.
 - `GET /api/sync/pull` devolve alterações posteriores ao cursor do cliente.
 - O mobile mantém `field_records`, `sync_queue` e `sync_state` no SQLite.
+- Cada registro local possui `owner_user_id`; consultas e operações da fila são restritas ao usuário da sessão.
+- O cursor incremental usa uma chave diferente para cada usuário, impedindo que a sincronização de uma conta avance o estado de outra.
+- O endpoint de pull do mobile sempre filtra pelo usuário autenticado. A visão global do administrador permanece no endpoint administrativo de registros usado pelo dashboard web.
 - Edições sincronizadas geram operações `UPDATE`; exclusões geram `DELETE` com exclusão lógica no servidor.
 - Alterações sucessivas no mesmo registro são consolidadas em uma única operação pendente.
 - Conflitos armazenam no SQLite a cópia retornada pelo servidor para comparação offline.
 - Ao manter a versão local, o app cria uma nova operação idempotente baseada na versão atual do servidor.
 - O retorno da conectividade dispara upload, push e pull sem bloquear o uso offline.
+
+### Migração do cache por usuário
+
+Versões anteriores do aplicativo não armazenavam o proprietário no SQLite. Na primeira abertura após a atualização, registros sincronizados sem proprietário ficam temporariamente ocultos e somente são associados a uma conta quando retornam do pull autenticado da API. Registros ainda pendentes ou em conflito são associados à sessão que estava salva no dispositivo, preservando o trabalho offline sem entregar dados ambíguos à próxima pessoa que fizer login. Novos registros sempre recebem o identificador do usuário no momento da criação.
 
 ## Documentos offline
 

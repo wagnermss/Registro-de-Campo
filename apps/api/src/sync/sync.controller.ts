@@ -7,7 +7,6 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import { UserRole } from "@prisma/client";
 import { Request } from "express";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { JwtPayload } from "../auth/jwt.strategy";
@@ -30,10 +29,6 @@ export class SyncController {
     @Req() request: AuthenticatedRequest,
     @Query("cursor") cursor?: string,
   ) {
-    return this.sync.pull(
-      request.user.sub,
-      request.user.role === UserRole.ADMIN,
-      cursor,
-    );
+    return this.sync.pull(request.user.sub, cursor);
   }
 }

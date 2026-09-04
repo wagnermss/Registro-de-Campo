@@ -152,13 +152,13 @@ export class SyncService {
     };
   }
 
-  async pull(userId: string, isAdmin: boolean, cursor?: string) {
+  async pull(userId: string, cursor?: string) {
     const since = cursor ? new Date(cursor) : new Date(0);
     const upperBound = new Date();
     const records = await this.prisma.fieldRecord.findMany({
       where: {
         updatedAt: { gt: since, lte: upperBound },
-        ...(isAdmin ? {} : { userId }),
+        userId,
       },
       orderBy: { updatedAt: "asc" },
       take: 500,

@@ -52,8 +52,9 @@ export type LocalDocument = {
 export async function initializeLocalDatabase() {
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
     CREATE TABLE IF NOT EXISTS field_records (
-      id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, description TEXT,
+      id TEXT PRIMARY KEY NOT NULL, owner_user_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT,
       latitude REAL NOT NULL, longitude REAL NOT NULL, photo_uri TEXT, photo_key TEXT,
       captured_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, version INTEGER NOT NULL DEFAULT 0,
       sync_status TEXT NOT NULL DEFAULT 'PENDING'
@@ -85,6 +86,10 @@ export async function initializeLocalDatabase() {
   }
   if (!names.has("deleted_at"))
     await db.execAsync("ALTER TABLE field_records ADD COLUMN deleted_at TEXT");
+  if (!names.has("owner_user_id"))
+    await db.execAsync(
+      "ALTER TABLE field_records ADD COLUMN owner_user_id TEXT",
+    );
 
   const oldIds = await db.getAllAsync<{ id: string }>(
     "SELECT id FROM field_records",
@@ -124,12 +129,30 @@ export async function initializeLocalDatabase() {
     version INTEGER NOT NULL, updated_at TEXT NOT NULL, local_uri TEXT,
     downloaded_checksum TEXT, downloaded_version INTEGER
   );`);
+}
+
+export async function prepareLocalDataForUser(
+  userId: string,
+  claimLegacyPending = false,
+) {
+  await db.withTransactionAsync(async () => {
+    if (claimLegacyPending)
+      await db.runAsync(
+        `UPDATE field_records SET owner_user_id = ?
+         WHERE owner_user_id IS NULL AND sync_status IN ('PENDING', 'CONFLICT')`,
+        userId,
+      );
+  });
+
   const pending = await db.getAllAsync<{
     id: string;
     version: number;
     capturedAt: string;
   }>(
-    "SELECT id, version, captured_at as capturedAt FROM field_records WHERE sync_status = 'PENDING' AND id NOT IN (SELECT record_id FROM sync_queue)",
+    `SELECT id, version, captured_at as capturedAt FROM field_records
+     WHERE owner_user_id = ? AND sync_status = 'PENDING'
+       AND id NOT IN (SELECT record_id FROM sync_queue)`,
+    userId,
   );
   for (const record of pending) {
     await db.runAsync(
@@ -208,30 +231,38 @@ export async function markDocumentDownloaded(
   );
 }
 
-export async function listLocalRecords() {
-  return db.getAllAsync<LocalRecord>(`SELECT id, title, description, latitude, longitude,
+export async function listLocalRecords(userId: string) {
+  return db.getAllAsync<LocalRecord>(
+    `SELECT id, title, description, latitude, longitude,
     photo_uri as photoUri, photo_key as photoKey, captured_at as capturedAt,
     updated_at as updatedAt, deleted_at as deletedAt, version, sync_status as syncStatus
-    FROM field_records WHERE deleted_at IS NULL ORDER BY captured_at DESC`);
+    FROM field_records WHERE owner_user_id = ? AND deleted_at IS NULL
+    ORDER BY captured_at DESC`,
+    userId,
+  );
 }
 
-export async function createLocalRecord(record: {
-  id: string;
-  title: string;
-  description: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  photoUri: string | null;
-  capturedAt: string;
-}) {
+export async function createLocalRecord(
+  record: {
+    id: string;
+    title: string;
+    description: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    photoUri: string | null;
+    capturedAt: string;
+  },
+  userId: string,
+) {
   if (record.latitude === null || record.longitude === null)
     throw new Error("A localização é obrigatória para criar um registro.");
   await db.withTransactionAsync(async () => {
     await db.runAsync(
       `INSERT INTO field_records
-      (id, title, description, latitude, longitude, photo_uri, photo_key, captured_at, updated_at, deleted_at, version, sync_status)
-      VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, 0, 'PENDING')`,
+      (id, owner_user_id, title, description, latitude, longitude, photo_uri, photo_key, captured_at, updated_at, deleted_at, version, sync_status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, 0, 'PENDING')`,
       record.id,
+      userId,
       record.title,
       record.description,
       record.latitude,
@@ -250,6 +281,7 @@ export async function createLocalRecord(record: {
 }
 
 export async function updateLocalRecord(
+  userId: string,
   id: string,
   title: string,
   description: string | null,
@@ -258,8 +290,9 @@ export async function updateLocalRecord(
     `SELECT id, title, description, latitude, longitude, photo_uri as photoUri,
      photo_key as photoKey, captured_at as capturedAt, updated_at as updatedAt,
      deleted_at as deletedAt, version, sync_status as syncStatus
-     FROM field_records WHERE id = ? AND deleted_at IS NULL`,
+     FROM field_records WHERE id = ? AND owner_user_id = ? AND deleted_at IS NULL`,
     id,
+    userId,
   );
   if (!record) throw new Error("Registro local não encontrado.");
   if (record.syncStatus === "CONFLICT")
@@ -272,11 +305,12 @@ export async function updateLocalRecord(
   await db.withTransactionAsync(async () => {
     await db.runAsync(
       `UPDATE field_records SET title = ?, description = ?, updated_at = ?, sync_status = 'PENDING'
-       WHERE id = ?`,
+       WHERE id = ? AND owner_user_id = ?`,
       title,
       description,
       now,
       id,
+      userId,
     );
     if (!queued)
       await db.runAsync(
@@ -291,13 +325,14 @@ export async function updateLocalRecord(
   });
 }
 
-export async function deleteLocalRecord(id: string) {
+export async function deleteLocalRecord(userId: string, id: string) {
   const record = await db.getFirstAsync<LocalRecord>(
     `SELECT id, title, description, latitude, longitude, photo_uri as photoUri,
      photo_key as photoKey, captured_at as capturedAt, updated_at as updatedAt,
      deleted_at as deletedAt, version, sync_status as syncStatus
-     FROM field_records WHERE id = ? AND deleted_at IS NULL`,
+     FROM field_records WHERE id = ? AND owner_user_id = ? AND deleted_at IS NULL`,
     id,
+    userId,
   );
   if (!record) throw new Error("Registro local não encontrado.");
   if (record.syncStatus === "CONFLICT")
@@ -309,7 +344,11 @@ export async function deleteLocalRecord(id: string) {
   if (queued?.operationType === "CREATE") {
     await db.withTransactionAsync(async () => {
       await db.runAsync("DELETE FROM sync_queue WHERE record_id = ?", id);
-      await db.runAsync("DELETE FROM field_records WHERE id = ?", id);
+      await db.runAsync(
+        "DELETE FROM field_records WHERE id = ? AND owner_user_id = ?",
+        id,
+        userId,
+      );
     });
     return record.photoUri;
   }
@@ -317,10 +356,11 @@ export async function deleteLocalRecord(id: string) {
   await db.withTransactionAsync(async () => {
     await db.runAsync(
       `UPDATE field_records SET deleted_at = ?, updated_at = ?, sync_status = 'PENDING'
-       WHERE id = ?`,
+       WHERE id = ? AND owner_user_id = ?`,
       now,
       now,
       id,
+      userId,
     );
     if (queued)
       await db.runAsync(
@@ -341,50 +381,64 @@ export async function deleteLocalRecord(id: string) {
   return null;
 }
 
-export async function listPendingOperations() {
-  return db.getAllAsync<PendingOperation>(`SELECT r.id, r.title, r.description, r.latitude, r.longitude,
+export async function listPendingOperations(userId: string) {
+  return db.getAllAsync<PendingOperation>(
+    `SELECT r.id, r.title, r.description, r.latitude, r.longitude,
     r.photo_uri as photoUri, r.photo_key as photoKey, r.captured_at as capturedAt,
     r.updated_at as updatedAt, r.deleted_at as deletedAt, r.version, r.sync_status as syncStatus,
     q.operation_id as operationId, q.operation_type as operationType,
     q.base_version as baseVersion, q.attempts
-    FROM sync_queue q JOIN field_records r ON r.id = q.record_id ORDER BY q.created_at ASC`);
+    FROM sync_queue q JOIN field_records r ON r.id = q.record_id
+    WHERE r.owner_user_id = ? ORDER BY q.created_at ASC`,
+    userId,
+  );
 }
 
-export async function setPhotoKey(recordId: string, photoKey: string) {
+export async function setPhotoKey(
+  userId: string,
+  recordId: string,
+  photoKey: string,
+) {
   await db.runAsync(
-    "UPDATE field_records SET photo_key = ? WHERE id = ?",
+    "UPDATE field_records SET photo_key = ? WHERE id = ? AND owner_user_id = ?",
     photoKey,
     recordId,
+    userId,
   );
 }
 
 export async function markOperationSynced(
+  userId: string,
   operationId: string,
   recordId: string,
   version: number,
 ) {
   await db.withTransactionAsync(async () => {
     await db.runAsync(
-      "UPDATE field_records SET sync_status = 'SYNCED', version = ? WHERE id = ?",
+      "UPDATE field_records SET sync_status = 'SYNCED', version = ? WHERE id = ? AND owner_user_id = ?",
       version,
       recordId,
+      userId,
     );
     await db.runAsync(
-      "DELETE FROM sync_queue WHERE operation_id = ?",
+      "DELETE FROM sync_queue WHERE operation_id = ? AND record_id = ?",
       operationId,
+      recordId,
     );
   });
 }
 
 export async function markOperationConflict(
+  userId: string,
   operationId: string,
   recordId: string,
   message: string,
   serverRecord?: ServerRecord,
 ) {
   await db.runAsync(
-    "UPDATE field_records SET sync_status = 'CONFLICT' WHERE id = ?",
+    "UPDATE field_records SET sync_status = 'CONFLICT' WHERE id = ? AND owner_user_id = ?",
     recordId,
+    userId,
   );
   await db.runAsync(
     `UPDATE sync_queue SET attempts = attempts + 1, last_error = ?, server_payload = ?
@@ -395,7 +449,7 @@ export async function markOperationConflict(
   );
 }
 
-export async function listLocalConflicts() {
+export async function listLocalConflicts(userId: string) {
   const rows = await db.getAllAsync<
     LocalRecord & {
       operationId: string;
@@ -403,14 +457,18 @@ export async function listLocalConflicts() {
       message: string | null;
       serverPayload: string | null;
     }
-  >(`SELECT r.id, r.title, r.description, r.latitude, r.longitude,
+  >(
+    `SELECT r.id, r.title, r.description, r.latitude, r.longitude,
     r.photo_uri as photoUri, r.photo_key as photoKey, r.captured_at as capturedAt,
     r.updated_at as updatedAt, r.deleted_at as deletedAt, r.version,
     r.sync_status as syncStatus, q.operation_id as operationId,
     q.operation_type as operationType, q.last_error as message,
     q.server_payload as serverPayload
     FROM sync_queue q JOIN field_records r ON r.id = q.record_id
-    WHERE r.sync_status = 'CONFLICT' ORDER BY q.created_at ASC`);
+    WHERE r.owner_user_id = ? AND r.sync_status = 'CONFLICT'
+    ORDER BY q.created_at ASC`,
+    userId,
+  );
   return rows.map(
     ({
       operationId,
@@ -430,7 +488,10 @@ export async function listLocalConflicts() {
   );
 }
 
-export async function acceptServerConflict(conflict: LocalConflict) {
+export async function acceptServerConflict(
+  userId: string,
+  conflict: LocalConflict,
+) {
   if (!conflict.serverRecord)
     throw new Error("Sincronize novamente para obter a versão do servidor.");
   const server = conflict.serverRecord;
@@ -444,7 +505,7 @@ export async function acceptServerConflict(conflict: LocalConflict) {
       `UPDATE field_records SET title = ?, description = ?, latitude = ?, longitude = ?,
        photo_uri = CASE WHEN photo_key = ? THEN photo_uri ELSE NULL END,
        photo_key = ?, captured_at = ?, updated_at = ?, deleted_at = ?, version = ?,
-       sync_status = 'SYNCED' WHERE id = ?`,
+       sync_status = 'SYNCED' WHERE id = ? AND owner_user_id = ?`,
       server.title,
       server.description,
       server.latitude,
@@ -456,6 +517,7 @@ export async function acceptServerConflict(conflict: LocalConflict) {
       server.deletedAt,
       server.version,
       server.id,
+      userId,
     );
     await db.runAsync(
       "DELETE FROM sync_queue WHERE operation_id = ?",
@@ -465,7 +527,10 @@ export async function acceptServerConflict(conflict: LocalConflict) {
   return discardPhoto;
 }
 
-export async function keepLocalConflict(conflict: LocalConflict) {
+export async function keepLocalConflict(
+  userId: string,
+  conflict: LocalConflict,
+) {
   if (!conflict.serverRecord)
     throw new Error("Sincronize novamente para obter a versão do servidor.");
   const server = conflict.serverRecord;
@@ -483,10 +548,11 @@ export async function keepLocalConflict(conflict: LocalConflict) {
     );
     await db.runAsync(
       `UPDATE field_records SET version = ?, updated_at = ?, sync_status = 'PENDING'
-       WHERE id = ?`,
+       WHERE id = ? AND owner_user_id = ?`,
       server.version,
       now,
       conflict.localRecord.id,
+      userId,
     );
   });
 }
@@ -502,15 +568,17 @@ export async function markOperationFailed(
   );
 }
 
-export async function getSyncCursor() {
+export async function getSyncCursor(userId: string) {
   return (
     await db.getFirstAsync<{ value: string }>(
-      "SELECT value FROM sync_state WHERE key = 'records_cursor'",
+      "SELECT value FROM sync_state WHERE key = ?",
+      `records_cursor:${userId}`,
     )
   )?.value;
 }
 
 export async function applyServerChanges(
+  userId: string,
   records: ServerRecord[],
   cursor: string,
 ) {
@@ -518,9 +586,10 @@ export async function applyServerChanges(
     for (const record of records) {
       await db.runAsync(
         `INSERT INTO field_records
-        (id, title, description, latitude, longitude, photo_uri, photo_key, captured_at, updated_at, deleted_at, version, sync_status)
-        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 'SYNCED')
+        (id, owner_user_id, title, description, latitude, longitude, photo_uri, photo_key, captured_at, updated_at, deleted_at, version, sync_status)
+        VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 'SYNCED')
         ON CONFLICT(id) DO UPDATE SET
+          owner_user_id = CASE WHEN field_records.owner_user_id IS NULL AND field_records.sync_status = 'SYNCED' THEN excluded.owner_user_id ELSE field_records.owner_user_id END,
           title = CASE WHEN field_records.sync_status IN ('PENDING', 'CONFLICT') THEN field_records.title ELSE excluded.title END,
           description = CASE WHEN field_records.sync_status IN ('PENDING', 'CONFLICT') THEN field_records.description ELSE excluded.description END,
           latitude = CASE WHEN field_records.sync_status IN ('PENDING', 'CONFLICT') THEN field_records.latitude ELSE excluded.latitude END,
@@ -529,8 +598,11 @@ export async function applyServerChanges(
           updated_at = CASE WHEN field_records.sync_status IN ('PENDING', 'CONFLICT') THEN field_records.updated_at ELSE excluded.updated_at END,
           deleted_at = CASE WHEN field_records.sync_status IN ('PENDING', 'CONFLICT') THEN field_records.deleted_at ELSE excluded.deleted_at END,
           version = CASE WHEN field_records.sync_status IN ('PENDING', 'CONFLICT') THEN field_records.version ELSE excluded.version END,
-          sync_status = CASE WHEN field_records.sync_status IN ('PENDING', 'CONFLICT') THEN field_records.sync_status ELSE 'SYNCED' END`,
+          sync_status = CASE WHEN field_records.sync_status IN ('PENDING', 'CONFLICT') THEN field_records.sync_status ELSE 'SYNCED' END
+        WHERE field_records.owner_user_id = excluded.owner_user_id
+           OR (field_records.owner_user_id IS NULL AND field_records.sync_status = 'SYNCED')`,
         record.id,
+        userId,
         record.title,
         record.description,
         record.latitude,
@@ -543,7 +615,8 @@ export async function applyServerChanges(
       );
     }
     await db.runAsync(
-      "INSERT INTO sync_state (key, value) VALUES ('records_cursor', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      "INSERT INTO sync_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      `records_cursor:${userId}`,
       cursor,
     );
   });

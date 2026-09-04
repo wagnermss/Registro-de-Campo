@@ -25,15 +25,15 @@ async function uploadPhoto(photoUri: string) {
   return (await response.json()).storageKey as string;
 }
 
-export async function syncPendingRecords() {
-  const operations = await listPendingOperations();
+export async function syncPendingRecords(userId: string) {
+  const operations = await listPendingOperations(userId);
   let synced = 0;
   for (const operation of operations) {
     try {
       let photoKey = operation.photoKey;
       if (operation.photoUri && !photoKey) {
         photoKey = await uploadPhoto(operation.photoUri);
-        await setPhotoKey(operation.id, photoKey);
+        await setPhotoKey(userId, operation.id, photoKey);
       }
       const response = await authenticatedFetch("/sync/push", {
         method: "POST",
@@ -63,6 +63,7 @@ export async function syncPendingRecords() {
       const result = (await response.json()).results[0];
       if (result.status === "APPLIED") {
         await markOperationSynced(
+          userId,
           operation.operationId,
           operation.id,
           result.version,
@@ -70,6 +71,7 @@ export async function syncPendingRecords() {
         synced += 1;
       } else
         await markOperationConflict(
+          userId,
           operation.operationId,
           operation.id,
           result.reason === "RECORD_DELETED"
@@ -84,12 +86,12 @@ export async function syncPendingRecords() {
       );
     }
   }
-  const cursor = await getSyncCursor();
+  const cursor = await getSyncCursor(userId);
   const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
   const pulled = await authenticatedFetch(`/sync/pull${query}`);
   if (pulled.ok) {
     const changes = await pulled.json();
-    await applyServerChanges(changes.records, changes.cursor);
+    await applyServerChanges(userId, changes.records, changes.cursor);
   }
   return { total: operations.length, synced };
 }

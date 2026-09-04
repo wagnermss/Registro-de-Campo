@@ -42,7 +42,10 @@ export async function authenticatedFetch(path: string, init: RequestInit = {}) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refreshToken }),
   });
-  if (!refreshed.ok) return response;
+  if (!refreshed.ok) {
+    await clearSession();
+    return response;
+  }
   const session = await refreshed.json();
   await saveSession(session);
   return fetch(`${API_URL}${path}`, {

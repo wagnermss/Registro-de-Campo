@@ -16,13 +16,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { authenticatedFetch } from "./auth-client";
 import DocumentsPanel from "./documents-panel";
+import UsersPanel from "./users-panel";
 
 const RecordMap = dynamic(() => import("./record-map"), {
   ssr: false,
   loading: () => <div className="map-placeholder">Carregando mapa…</div>,
 });
 
-type Profile = { name: string; email: string; role: string };
+type Profile = { id: string; name: string; email: string; role: string };
 
 type FieldRecord = {
   id: string;
@@ -62,7 +63,9 @@ const formatDate = (value: string) =>
   }).format(new Date(value));
 
 export default function Dashboard({ profile, onLogout }: DashboardProps) {
-  const [view, setView] = useState<"records" | "documents">("records");
+  const [view, setView] = useState<"records" | "documents" | "users">(
+    "records",
+  );
   const [data, setData] = useState<RecordsResponse>(emptyResponse);
   const [selected, setSelected] = useState<FieldRecord | null>(null);
   const [page, setPage] = useState(1);
@@ -223,10 +226,18 @@ export default function Dashboard({ profile, onLogout }: DashboardProps) {
           >
             Documentos
           </button>
+          <button
+            className={view === "users" ? "active" : undefined}
+            onClick={() => setView("users")}
+          >
+            Usuários
+          </button>
         </nav>
 
         {view === "documents" ? (
           <DocumentsPanel />
+        ) : view === "users" ? (
+          <UsersPanel currentUserId={profile.id} onLogout={onLogout} />
         ) : (
           <>
             <div className="page-heading">
